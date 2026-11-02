@@ -117,6 +117,8 @@ uint32_t confirmStart = 0;
 // True only for the upload whose START passed the Host/token checks while WAITING.
 // Unauthorized uploads are ignored silently so they cannot fail() a pending image.
 bool uploadAuthorized = false;
+// Authorization result of the current request, read by handleUploadDone.
+bool lastUploadAuthorized = false;
 // Searches the freshly written slot for the fw_version marker.
 bool findMarker(fw_version::Marker &out) {
   static uint8_t buf[1024 + sizeof(fw_version::Marker)];
@@ -142,11 +144,13 @@ void handleUploadChunk() {
   HTTPUpload &up = server->upload();
   if (up.status == UPLOAD_FILE_START) {
     uploadAuthorized = false;
+    lastUploadAuthorized = false;
     if (st.phase != ota_portal::WAITING) return;
     failed = false; holdLen = 0; st.received = 0; target = nullptr;
     if (!hostOk()) { fail("rejected: bad Host header"); return; }
     if (!ctEqual(server->arg("t"), token)) { fail("rejected: bad session token"); return; }
     uploadAuthorized = true;
+    lastUploadAuthorized = true;
     st.expected = server->clientContentLength();
     target = esp_ota_get_next_update_partition(nullptr);
     if (!target) { fail("no OTA partition"); return; }
@@ -205,6 +209,13 @@ void handleUploadChunk() {
   }
 }
 void handleUploadDone() {
+  const bool authorized = lastUploadAuthorized;
+  lastUploadAuthorized = false;  // never carried over to a later request
+  if (!authorized) {
+    server->sendHeader("Cache-Control", "no-store");
+    server->send(403, "text/plain", "");
+    return;
+  }
   const bool ok = st.phase == ota_portal::SUCCESS || st.phase == ota_portal::AWAIT_CONFIRM;
   server->sendHeader("Cache-Control", "no-store");
   server->send(ok ? 200 : 400, "text/html; charset=utf-8",
