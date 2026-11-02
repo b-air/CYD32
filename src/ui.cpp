@@ -31,7 +31,7 @@ lv_obj_t *gridMarks[80], *gridLog;
 lv_obj_t *creaImg, *creaInfo, *creaBar, *flash;
 int flashLeft = 0;
 lv_obj_t *detList;
-lv_obj_t *otaQr, *otaInfo, *otaBar, *otaMsg;
+lv_obj_t *otaQr, *otaInfo, *otaBar, *otaMsg, *otaConfirm;
 // easter egg
 const char *kEgg[4] = {"A1", "B2", "C3", "D4"};
 int eggPos = 0; uint32_t eggStart = 0; bool eggDone = false;
@@ -313,6 +313,7 @@ void buildUpdateConfirm() {
   button(content, "Start update mode", 60, 110, 200, 44, onStartUpdate, nullptr, CYD32_COL_OK);
 }
 void buildOta() {
+  otaConfirm = nullptr;
   otaQr = lv_qrcode_create(content);
   lv_qrcode_set_size(otaQr, 140);
   lv_qrcode_set_dark_color(otaQr, lv_color_black());
@@ -331,8 +332,23 @@ void buildOta() {
   otaMsg = label(content, "", &lv_font_unscii_8, CYD32_COL_CYAN);
   lv_obj_set_pos(otaMsg, 160, 146); lv_obj_set_width(otaMsg, 158);
 }
+void onDowngrade(lv_event_t *e) { ota_portal::confirmDowngrade(lv_event_get_user_data(e) != nullptr); }
 void refreshOta() {
   const ota_portal::State &st = ota_portal::state();
+  const bool ask = st.phase == ota_portal::AWAIT_CONFIRM;
+  if (ask && !otaConfirm) {
+    otaConfirm = box(content, 0, 0, 320, 240 - kTop, CYD32_COL_BG);
+    lv_obj_t *t = label(otaConfirm, "DOWNGRADE", &lv_font_montserrat_24, CYD32_COL_HIT);
+    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_t *m = label(otaConfirm, st.msg, &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_align(m, LV_ALIGN_TOP_MID, 0, 56);
+    lv_obj_t *w = label(otaConfirm, "The uploaded firmware is OLDER than\nthe running one (or has no version).\nInstall it anyway?", &lv_font_unscii_8, CYD32_COL_AMBER);
+    lv_obj_align(w, LV_ALIGN_TOP_MID, 0, 80);
+    button(otaConfirm, "Cancel", 10, 150, 140, 44, onDowngrade, nullptr, CYD32_COL_OK);
+    button(otaConfirm, "Install", 170, 150, 140, 44, onDowngrade, (void *)1, CYD32_COL_HIT);
+  } else if (!ask && otaConfirm) {
+    lv_obj_delete(otaConfirm); otaConfirm = nullptr;
+  }
   char t[200];
   snprintf(t, sizeof t, "UPDATE MODE\n\nSSID %s\nPASS %s\n\nhttp://192.168.4.1\n\n%lu:%02lu left\n%s\n%lu KB",
            st.ssid, st.pass, (unsigned long)st.remainingS / 60, (unsigned long)st.remainingS % 60,

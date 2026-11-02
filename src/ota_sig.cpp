@@ -34,6 +34,9 @@ Result Verifier::finish(const uint8_t t[kTrailer], int &slot) {
   if (!trailerPresent(t)) return NO_TRAILER;
   const size_t sl = t[9];
   if (sl < 8 || sl > 72) return BAD_TRAILER;
+  for (int i = 10; i < 16; i++) if (t[i]) return BAD_TRAILER;          // reserved bytes
+  for (size_t i = 16 + sl; i < 88; i++) if (t[i]) return BAD_TRAILER;  // zero padding after DER
+  if (t[8] > 1) return BAD_TRAILER;
   if (!CYD32_KEY0_PRESENT && !CYD32_KEY1_PRESENT) return NO_KEY;
   if (CYD32_KEY0_PRESENT && verifyWith(cyd32_key0, hash, t + 16, sl)) { slot = 0; return OK; }
   if (CYD32_KEY1_PRESENT && verifyWith(cyd32_key1, hash, t + 16, sl)) { slot = 1; return OK; }

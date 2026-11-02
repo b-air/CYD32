@@ -14,6 +14,7 @@ enum Phase { OFF, WIFI_PH, BLE_PH } phase = OFF;
 uint32_t phaseStart = 0, lastHop = 0;
 uint8_t channel = 1;
 bool stopped = false;
+bool wifiOk = false, bleInitOk = false, bleStartOk = false;
 
 // ASTM F3411 Remote ID over Wi-Fi beacon: vendor IE with OUI FA:0B:BC, type 0x0D.
 bool hasRemoteIdIe(const uint8_t *ies, int len) {
@@ -63,7 +64,7 @@ void startWifi() {
   wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
   esp_wifi_set_promiscuous_filter(&filt);
   esp_wifi_set_promiscuous_rx_cb(&promiscCb);
-  esp_wifi_set_promiscuous(true);
+  wifiOk = esp_wifi_set_promiscuous(true) == ESP_OK;
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
   phase = WIFI_PH; phaseStart = lastHop = millis();
 }
@@ -73,7 +74,7 @@ void startBle() {
   s->setAdvertisedDeviceCallbacks(&bleCb, true);
   s->setActiveScan(false);  // passive: no SCAN_REQ is ever sent
   s->setInterval(100); s->setWindow(90);
-  s->start(0, nullptr, false);
+  bleStartOk = s->start(0, nullptr, false) || bleStartOk;
   phase = BLE_PH; phaseStart = millis();
 }
 void stopBle() { NimBLEDevice::getScan()->stop(); NimBLEDevice::getScan()->clearResults(); }
@@ -82,6 +83,10 @@ void stopBle() { NimBLEDevice::getScan()->stop(); NimBLEDevice::getScan()->clear
 namespace scanner {
 void begin() {
   NimBLEDevice::init("");
+  bleInitOk = NimBLEDevice::getInitialized();
+  // Exercise both radios once at boot so the self-test covers them.
+  startBle();
+  stopBle();
   startWifi();
 }
 void loop() {
@@ -106,4 +111,5 @@ void stop() {
   phase = OFF;
 }
 bool wifiActive() { return phase == WIFI_PH; }
+bool healthy() { return wifiOk && bleInitOk && bleStartOk; }
 }

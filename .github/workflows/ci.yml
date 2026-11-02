@@ -38,6 +38,9 @@ jobs:
               - ".github/**"
               - "platformio.ini"
               - "partitions*.csv"
+              - "keys/**"
+              - "hooks/**"
+              - ".gitleaks*"
             firmware:
               - "src/**"
               - "include/**"
@@ -141,7 +144,8 @@ jobs:
           umask 077
           list="$RUNNER_TEMP/dl.txt"
           printf '%s' "$DENYLIST_B64" | base64 -d > "$list"
-          if [ -n "$BASE_SHA" ]; then export DENYLIST_GIT_RANGE="$BASE_SHA..HEAD"; fi
+          # PRs: commits of the PR. Pushes to main / manual runs: the FULL history (authors, committers, messages).
+          if [ -n "$BASE_SHA" ]; then export DENYLIST_GIT_RANGE="$BASE_SHA..HEAD"; else export DENYLIST_GIT_RANGE="HEAD"; fi
           rc=0; scripts/denylist-check.sh "$list" || rc=$?
           rm -f "$list"
           exit $rc

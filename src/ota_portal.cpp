@@ -10,6 +10,7 @@
 #include <string.h>
 #include "cyd32_build_gen.h"
 #include "fw_status.h"
+#include "fw_version.h"
 #include "ota_sig.h"
 
 namespace {
@@ -21,6 +22,9 @@ const esp_partition_t *target = nullptr;
 bool otaOpen = false, failed = false;
 ota_sig::Verifier verifier;
 uint8_t hold[ota_sig::kTrailer];
+char token[33];               // per-session CSRF token (16 random bytes, hex)
+bool pendingUnsigned = false; // state kept while a downgrade awaits confirmation
+int pendingSlot = -1;
 size_t holdLen = 0;
 
 void randomString(char *out, size_t n) {
@@ -78,7 +82,19 @@ String esc(const char *s) {
   String o; for (; *s; s++) { if (*s == '<') o += "&lt;"; else if (*s == '>') o += "&gt;"; else if (*s == '&') o += "&amp;"; else if (*s == '"') o += "&quot;"; else o += *s; }
   return o;
 }
+bool ctEqual(const String &a, const char *b) {  // constant-time for equal lengths
+  const size_t n = strlen(b);
+  if (a.length() != n) return false;
+  uint8_t d = 0;
+  for (size_t i = 0; i < n; i++) d |= (uint8_t)a[i] ^ (uint8_t)b[i];
+  return d == 0;
+}
+bool hostOk() {  // DNS-rebinding defence: only the literal AP address is accepted
+  const String h = server->hostHeader();
+  return h == "192.168.4.1" || h == "192.168.4.1:80";
+}
 void handleRoot() {
+  if (!hostOk()) { server->send(421, "text/plain", "bad host"); return; }
   String h = kPage1;
   h += "<tr><td>Licence</td><td>" CYD32_LICENSE "</td></tr>";
   h += "<tr><td>Version</td><td>" + esc(CYD32_VERSION) + "</td></tr>";
@@ -86,8 +102,9 @@ void handleRoot() {
   h += "<tr><td>Source</td><td><a href='" + esc(CYD32_SOURCE_URL) + "'>" + esc(CYD32_SOURCE_URL) + "</a></td></tr>";
   h += "<tr><td>Status</td><td>" + String(fw_status::kindStr()) + "</td></tr>";
   h += "<tr><td>Keys</td><td>" CYD32_KEY0_FPR " / " CYD32_KEY1_FPR "</td></tr></table>";
+  if (st.phase == ota_portal::AWAIT_CONFIRM) h += "<p class=w>DOWNGRADE: confirm or cancel on the device screen.</p>";
   if (st.unsignedArmed) h += "<p class=w>UNSIGNED MODE ARMED: one single unsigned update will be accepted.</p>";
-  h += "<form method=POST action=/update enctype=multipart/form-data><p>Signed firmware file (.bin):</p>"
+  h += "<form method=POST action='/update?t=" + String(token) + "' enctype=multipart/form-data><p>Signed firmware file (.bin):</p>"
        "<input type=file name=fw accept='.bin,application/octet-stream' required><br><button>Upload and install</button></form>"
        "<p>The firmware is verified (ECDSA P-256 signature) before it is activated. Source code: AGPL-3.0, see the link above.</p></html>";
   server->sendHeader("Cache-Control", "no-store");
@@ -96,14 +113,40 @@ void handleRoot() {
   server->send(200, "text/html; charset=utf-8", h);
 }
 
+uint32_t confirmStart = 0;
+// Searches the freshly written slot for the fw_version marker.
+bool findMarker(fw_version::Marker &out) {
+  static uint8_t buf[1024 + sizeof(fw_version::Marker)];
+  const size_t ml = sizeof(fw_version::Marker);
+  const size_t len = st.received < target->size ? st.received : target->size;
+  for (size_t off = 0; off < len; off += 1024) {
+    const size_t n = (off + sizeof buf <= target->size) ? sizeof buf : target->size - off;
+    if (esp_partition_read(target, off, buf, n) != ESP_OK) return false;
+    for (size_t i = 0; i + ml <= n; i++)
+      if (buf[i] == 'C' && memcmp(buf + i, fw_version::kMagic, 16) == 0) { memcpy(&out, buf + i, ml); return true; }
+  }
+  return false;
+}
+void activate() {
+  // Signature verified (or unsigned mode explicitly armed), version accepted: only now switch the boot slot.
+  fw_status::recordNextBoot(target, pendingUnsigned, pendingSlot);
+  if (esp_ota_set_boot_partition(target) != ESP_OK) { fail("set_boot_partition failed"); return; }
+  st.phase = ota_portal::SUCCESS;
+  setMsg(pendingUnsigned ? "installed (UNSIGNED), rebooting" : "signature OK, rebooting");
+  finishedAt = millis();
+}
 void handleUploadChunk() {
   HTTPUpload &up = server->upload();
   if (up.status == UPLOAD_FILE_START) {
-    if (st.phase == ota_portal::RECEIVING || st.phase == ota_portal::SUCCESS) return;
-    failed = false; holdLen = 0; st.received = 0;
+    if (st.phase != ota_portal::WAITING) return;
+    failed = false; holdLen = 0; st.received = 0; target = nullptr;
+    if (!hostOk()) { fail("rejected: bad Host header"); return; }
+    if (!ctEqual(server->arg("t"), token)) { fail("rejected: bad session token"); return; }
     st.expected = server->clientContentLength();
     target = esp_ota_get_next_update_partition(nullptr);
     if (!target) { fail("no OTA partition"); return; }
+    // multipart overhead allowance: 2 KB
+    if (st.expected > target->size + ota_sig::kTrailer + 2048) { target = nullptr; fail("file larger than the OTA slot"); return; }
     if (esp_ota_begin(target, OTA_SIZE_UNKNOWN, &handle) != ESP_OK) { fail("esp_ota_begin failed"); return; }
     otaOpen = true;
     verifier.begin();
@@ -111,6 +154,8 @@ void handleUploadChunk() {
     setMsg("receiving...");
   } else if (up.status == UPLOAD_FILE_WRITE) {
     if (st.received == 0 && up.currentSize > 0 && up.buf[0] != 0xE9) { fail("not an ESP32 image"); return; }
+    if (failed) return;
+    if (st.received + up.currentSize > target->size + ota_sig::kTrailer) { fail("file larger than the OTA slot"); return; }
     feed(up.buf, up.currentSize);
   } else if (up.status == UPLOAD_FILE_END) {
     if (failed) return;
@@ -131,18 +176,26 @@ void handleUploadChunk() {
     const esp_err_t e = esp_ota_end(handle);
     otaOpen = false;
     if (e != ESP_OK) { fail("invalid image (esp_ota_end)"); return; }
-    // Signature verified (or unsigned mode explicitly armed): only now switch the boot slot.
-    fw_status::recordNextBoot(target->label, unsignedImage, slot);
-    if (esp_ota_set_boot_partition(target) != ESP_OK) { fail("set_boot_partition failed"); return; }
-    st.phase = ota_portal::SUCCESS;
-    setMsg(unsignedImage ? "installed (UNSIGNED), rebooting" : "signature OK, rebooting");
-    finishedAt = millis();
+    pendingUnsigned = unsignedImage; pendingSlot = slot;
+    // Anti-downgrade: compare the version marker of the new image with ours.
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(target, &desc) != ESP_OK) { fail("no app descriptor"); return; }
+    fw_version::Marker nv;
+    const bool found = findMarker(nv);
+    if (!found || fw_version::compare(nv, fw_version::running) < 0) {
+      snprintf(st.msg, sizeof st.msg, found ? "DOWNGRADE to %u.%u.%u: confirm on screen" : "DOWNGRADE (unknown version): confirm on screen",
+               nv.major, nv.minor, nv.patch);
+      st.phase = ota_portal::AWAIT_CONFIRM;
+      confirmStart = millis();
+      return;
+    }
+    activate();
   } else if (up.status == UPLOAD_FILE_ABORTED) {
     fail("transfer aborted");
   }
 }
 void handleUploadDone() {
-  const bool ok = st.phase == ota_portal::SUCCESS;
+  const bool ok = st.phase == ota_portal::SUCCESS || st.phase == ota_portal::AWAIT_CONFIRM;
   server->sendHeader("Cache-Control", "no-store");
   server->send(ok ? 200 : 400, "text/html; charset=utf-8",
                String(kPage1) + "</table><h2>" + (ok ? "OK" : "Failed") + "</h2><p>" + esc(st.msg) +
@@ -151,12 +204,19 @@ void handleUploadDone() {
 }  // namespace
 
 namespace ota_portal {
+void confirmDowngrade(bool yes) {
+  if (st.phase != AWAIT_CONFIRM) return;
+  if (yes) activate();
+  else { failed = false; fail("downgrade cancelled"); }
+}
 void start(bool armed) {
   memset(&st, 0, sizeof st);
   st.unsignedArmed = armed;
   char sfx[5]; randomString(sfx, 4);
   snprintf(st.ssid, sizeof st.ssid, "CYD32-%s", sfx);
   randomString(st.pass, 12);
+  uint8_t tb[16]; esp_fill_random(tb, sizeof tb);
+  for (int i = 0; i < 16; i++) snprintf(token + 2 * i, 3, "%02x", tb[i]);
   snprintf(st.qr, sizeof st.qr, "WIFI:T:WPA;S:%s;P:%s;;", st.ssid, st.pass);
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
@@ -177,8 +237,9 @@ void loop() {
   const uint32_t el = now - startedAt;
   st.remainingS = el >= kWindowMs ? 0 : (kWindowMs - el) / 1000;
   if (st.phase == SUCCESS && now - finishedAt > 2500) ESP.restart();
-  if (st.phase == FAILED && now - finishedAt > 1000) st.phase = WAITING;  // allow another try within the window
-  if (el >= kWindowMs && st.phase != RECEIVING && st.phase != VERIFYING) {
+  if (st.phase == FAILED && now - finishedAt > 1000) { st.phase = WAITING; failed = false; }
+  if (st.phase == AWAIT_CONFIRM && now - confirmStart > 120000) { failed = false; fail("downgrade not confirmed"); }  // allow another try within the window
+  if (el >= kWindowMs && st.phase != RECEIVING && st.phase != VERIFYING && st.phase != AWAIT_CONFIRM) {
     st.phase = TIMEOUT;
     WiFi.softAPdisconnect(true);
     delay(200);

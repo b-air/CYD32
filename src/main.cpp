@@ -40,7 +40,8 @@ void selfTest() {
   if (selfTestDone || millis() - bootMs < 8000) return;
   selfTestDone = true;
   lv_mem_monitor_t m; lv_mem_monitor(&m);
-  const bool ok = ESP.getFreeHeap() > 20000 && m.free_size > 4096 && lv_display_get_default() != nullptr;
+  const bool ok = ESP.getFreeHeap() > 20000 && m.free_size > 4096 && lv_display_get_default() != nullptr &&
+                  (otaMode || scanner::healthy());
   esp_ota_img_states_t s;
   const esp_partition_t *run = esp_ota_get_running_partition();
   if (esp_ota_get_state_partition(run, &s) == ESP_OK && s == ESP_OTA_IMG_PENDING_VERIFY) {
@@ -99,6 +100,7 @@ void loop() {
     if (ui::takeUpdateRequest()) {
       scanner::stop();
       ota_portal::start(unsignedArmed);
+      unsignedArmed = false;
       otaMode = true;
       ui::show(ui::OTA);
     }

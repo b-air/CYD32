@@ -12,6 +12,10 @@ bad=()
 for f in "${files[@]}"; do
   [[ -f "$f" ]] || continue
   if grep -qiFI -f <(grep -v '^\s*$' "$list") -- "$f" 2>/dev/null; then bad+=("$f"); fi
+  # PNG metadata (tEXt/zTXt/iTXt/eXIf), decompressed
+  case "$f" in *.png|*.PNG)
+    if python3 "$(dirname "$0")/png_text.py" "$f" | grep -qiF -f <(grep -v '^\s*$' "$list"); then bad+=("(png metadata) $f"); fi;;
+  esac
   # also check the path itself
   if printf '%s\n' "$f" | grep -qiF -f <(grep -v '^\s*$' "$list"); then bad+=("(path) $f"); fi
 done

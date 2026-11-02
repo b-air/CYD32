@@ -14,4 +14,7 @@ void begin();
 void loop();   // call from the main loop
 void stop();   // before OTA mode
 bool wifiActive();
+// Self-test: Wi-Fi promiscuous start and NimBLE init succeeded, and the BLE
+// scan has been started at least once.
+bool healthy();
 }

@@ -81,10 +81,16 @@ Secure Boot and no flash encryption.
    bootloader rolls back to the previous slot.
 
 The portal shows licence, version, commit and source URL; it never exposes scan data.
+It only answers requests whose `Host` is `192.168.4.1`, and uploads must carry a
+random per-session token embedded in the page (CSRF protection). Uploads larger
+than the OTA slot are rejected. If the uploaded firmware is older than the running
+one (or carries no version marker), it is not activated until you confirm the
+DOWNGRADE on the touchscreen.
 
 ### Firmware status: Official / Fork / Unsigned
 
-- **Official**: upstream release, verified with an upstream key.
+- **Official**: upstream release build whose key fingerprint matches the
+  upstream key in `keys/ota_pub_0.pem`.
 - **Fork**: built by anyone else with their own key (`scripts/gen-key.sh`).
   Forks set `CYD32_OTA_PUBKEY` to their own public key.
 - **Unsigned**: installed through the one-shot unsigned mode. To arm it, hold
@@ -94,6 +100,14 @@ The portal shows licence, version, commit and source URL; it never exposes scan 
 
 The About screen shows the status and the fingerprint of the verifying key
 (first 16 hex digits of SHA-256 of the raw public key). Two key slots allow key rotation.
+
+## Known TODOs
+
+- Test on real hardware: Wi-Fi `WIFI_MODE_NULL` + promiscuous capture, BLE/Wi-Fi
+  time-slicing, touch calibration, OTA end to end with rollback.
+- Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
+  `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
+  arduino-esp32 3.x / ESP-IDF 5.
 
 ## Signing and releases
 

@@ -7,7 +7,7 @@
 #pragma once
 #include <stdint.h>
 namespace ota_portal {
-enum Phase : uint8_t { IDLE, WAITING, RECEIVING, VERIFYING, SUCCESS, FAILED, TIMEOUT };
+enum Phase : uint8_t { IDLE, WAITING, RECEIVING, VERIFYING, AWAIT_CONFIRM, SUCCESS, FAILED, TIMEOUT };
 struct State {
   Phase phase;
   char ssid[16];
@@ -23,4 +23,6 @@ constexpr uint32_t kWindowMs = 10UL * 60UL * 1000UL;
 void start(bool unsignedArmed);  // scanner must be stopped first
 void loop();
 const State &state();
+// Touch confirmation for a downgrade (or an image without version marker).
+void confirmDowngrade(bool yes);
 }
