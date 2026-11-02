@@ -6,7 +6,9 @@ Educational, **passive (receive-only)** radio "sonar" firmware for the
 ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046 touch, 4 MB flash).
 It listens to Wi-Fi management frames and Bluetooth Low Energy advertisements,
 draws them on a naval-sonar UI and feeds a small creature that evolves as it
-"meets" drones broadcasting Remote ID.
+"meets" drones broadcasting Remote ID. The creature has idle and reaction
+animations (it reacts to a new drone or a PET/FEED tap) and plays an evolution
+sequence when it reaches a new stage.
 
 ![screens](docs/screenshots/board.png)
 

@@ -29,7 +29,6 @@ lv_point_precise_t sweepPts[2];
 float sweepAngle = 0;
 lv_obj_t *gridMarks[80], *gridLog;
 lv_obj_t *creaImg, *creaInfo, *creaBar, *flash;
-int flashLeft = 0;
 lv_obj_t *detList;
 lv_obj_t *otaQr, *otaInfo, *otaBar, *otaMsg, *otaConfirm;
 // easter egg
@@ -210,25 +209,31 @@ void refreshGrid() {
   lv_label_set_text(gridLog, t);
 }
 
-// LVGL 9.2 cannot scale indexed (I4) images, so the 64x64 sprite is expanded
-// once per change into a 128x128 RGB565A8 buffer (nearest neighbour, x2).
+// LVGL 9.2 cannot scale indexed (I4/A1) images, so each frame is expanded
+// into a 128x128 RGB565A8 buffer (nearest neighbour, x2).
 uint8_t *big = nullptr;  // heap, only while the creature screen is shown
 constexpr size_t kBigSize = 128 * 128 * 3;
 lv_image_dsc_t bigDsc;
 const lv_image_dsc_t *bigSrc = nullptr;
-const lv_image_dsc_t *upscale(const lv_image_dsc_t *src) {
+// white = draw every opaque pixel white (evolution silhouette). A1 masks are always white.
+const lv_image_dsc_t *upscale(const lv_image_dsc_t *src, bool white = false) {
   if (!big) return src;  // allocation failed: show the sprite at 1x
-  if (src == bigSrc) return &bigDsc;
   bigSrc = src;
-  const uint8_t *pal = src->data, *px = src->data + 64;
+  const bool a1 = src->header.cf == LV_COLOR_FORMAT_A1;
+  const uint8_t *pal = src->data, *px = a1 ? src->data : src->data + 64;
   uint16_t *rgb = (uint16_t *)big; uint8_t *alpha = big + 128 * 128 * 2;
   for (int y = 0; y < 128; y++)
     for (int x = 0; x < 128; x++) {
-      const uint8_t b = px[(y / 2) * 32 + (x / 4)];
-      const uint8_t idx = ((x / 2) & 1) ? (b & 0x0f) : (b >> 4);
-      const uint8_t *c = pal + idx * 4;  // B,G,R,A
-      rgb[y * 128 + x] = ((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3);
-      alpha[y * 128 + x] = c[3];
+      const int sx = x / 2, sy = y / 2, o = y * 128 + x;
+      if (a1) {
+        const bool on = px[sy * 8 + sx / 8] & (0x80 >> (sx & 7));
+        rgb[o] = 0xFFFF; alpha[o] = on ? 0xFF : 0;
+        continue;
+      }
+      const uint8_t b = px[sy * 32 + sx / 2];
+      const uint8_t *c = pal + ((sx & 1) ? (b & 0x0f) : (b >> 4)) * 4;  // B,G,R,A
+      rgb[o] = white ? 0xFFFF : ((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3);
+      alpha[o] = c[3];
     }
   bigDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
   bigDsc.header.cf = LV_COLOR_FORMAT_RGB565A8;
@@ -237,12 +242,79 @@ const lv_image_dsc_t *upscale(const lv_image_dsc_t *src) {
   lv_image_cache_drop(&bigDsc);
   return &bigDsc;
 }
-void creaAction(lv_event_t *e) { creature::addXp((uintptr_t)lv_event_get_user_data(e)); }
+
+// Creature animation (design README): a timer patches a 2,112-byte RAM copy of
+// the base sprite with delta frames; idle loops, reaction plays once on a new
+// drone or a PET/FEED tap; evolution follows cyd32_evo_ms.
+constexpr size_t kLiveSize = 2112;
+uint8_t *liveBuf = nullptr;  // heap (DRAM is full), only while the creature screen is shown
+lv_image_dsc_t liveDsc;
+const cyd32_anim_t *anim = nullptr;
+lv_timer_t *animTimer = nullptr;
+uint8_t animFrame = 0;
+bool reacting = false, reactReq = false;
+int8_t evoStep = -1;        // -1 = not evolving, 0..6 = step in cyd32_evo_ms
+uint8_t evoFrom = 0;
+uint32_t lastDrones = 0;
+int animScale() { return big ? 2 : 1; }
+void showLive() {
+  lv_image_cache_drop(&liveDsc);
+  lv_image_set_src(creaImg, upscale(&liveDsc));
+  lv_obj_invalidate(creaImg);
+}
+void blit(const cyd32_patch_t *p) {  // restore base, then copy the patch (as in the design README)
+  memcpy(liveBuf, anim->base->data, kLiveSize);
+  const uint8_t *s = anim->pix + p->ofs; uint8_t *px = liveBuf + 64;
+  const int sw = (p->w + 1) / 2;
+  for (int y = 0; y < p->h; y++)
+    for (int x = 0; x < p->w; x++) {
+      uint8_t v = s[y * sw + x / 2]; v = (x & 1) ? v & 0x0F : v >> 4;
+      const int X = p->x + x, Y = p->y + y;
+      if (X >= 64 || Y >= 64) continue;
+      uint8_t *d = &px[Y * 32 + X / 2];
+      *d = (X & 1) ? (*d & 0xF0) | v : (*d & 0x0F) | (v << 4);
+    }
+}
+void setAnim(const cyd32_anim_t *a) {
+  if (!liveBuf) { anim = a; liveDsc = *a->base; return; }  // no RAM: static sprite
+  anim = a; animFrame = 0; reacting = false;
+  liveDsc = *a->base; liveDsc.data = liveBuf;
+  memcpy(liveBuf, a->base->data, kLiveSize);
+}
+void animTick(lv_timer_t *t) {
+  if (!liveBuf) return;
+  if (evoStep >= 0) {  // evolution timeline
+    const cyd32_anim_t *from = creature::anim(evoFrom);
+    lv_obj_set_style_translate_x(creaImg, 0, 0); lv_obj_set_style_translate_y(creaImg, 0, 0);
+    const bool flashOn = evoStep == 1 || evoStep == 3 || evoStep == 5;
+    if (flashOn) lv_obj_remove_flag(flash, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
+    if (evoStep == 0) lv_image_set_src(creaImg, upscale(from->base, true));
+    if (evoStep == 2 && from->evo_a) lv_image_set_src(creaImg, upscale(from->evo_a));
+    if (evoStep == 4 && from->evo_b) lv_image_set_src(creaImg, upscale(from->evo_b));
+    if (evoStep == 6) { setAnim(creature::anim(creature::stage())); showLive(); }
+    lv_timer_set_period(t, cyd32_evo_ms[evoStep]);
+    if (++evoStep > 6) evoStep = -1;
+    return;
+  }
+  if (reactReq && anim->n_react) { reactReq = false; reacting = true; animFrame = anim->n_idle; }
+  const uint8_t n = anim->n_idle + (reacting ? anim->n_react : 0);
+  if (!n) return;
+  if (animFrame >= n) animFrame = 0;
+  const cyd32_patch_t *p = &anim->patch[animFrame];
+  blit(p); showLive();
+  lv_obj_set_style_translate_x(creaImg, p->dx * animScale(), 0);
+  lv_obj_set_style_translate_y(creaImg, p->dy * animScale(), 0);
+  lv_timer_set_period(t, p->ms ? p->ms : 100);
+  if (++animFrame >= n) { animFrame = 0; reacting = false; }
+}
+void creaAction(lv_event_t *e) { creature::addXp((uintptr_t)lv_event_get_user_data(e)); reactReq = true; }
 void buildCreature() {
   creaImg = lv_image_create(content);
-  bigSrc = nullptr;
+  bigSrc = nullptr; evoStep = -1;
   if (!big) big = (uint8_t *)malloc(kBigSize);
-  lv_image_set_src(creaImg, upscale(creature::sprite()));
+  if (!liveBuf) liveBuf = (uint8_t *)malloc(kLiveSize);
+  setAnim(creature::anim(creature::stage()));
+  showLive();
   lv_obj_set_pos(creaImg, big ? 22 : 54, big ? 26 : 58);
   creaInfo = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
   lv_obj_set_pos(creaInfo, 176, 12);
@@ -254,6 +326,8 @@ void buildCreature() {
   button(content, "FEED", 244, 120, 62, 32, creaAction, (void *)2, CYD32_COL_CYAN);
   flash = box(content, 0, 0, 320, kContentH, CYD32_COL_WHITE);
   lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
+  lastDrones = det::counts().droneEver;
+  animTimer = lv_timer_create(animTick, 100, nullptr);
 }
 void refreshCreature() {
   const uint8_t s = creature::stage();
@@ -266,11 +340,11 @@ void refreshCreature() {
   lv_label_set_text(creaInfo, t);
   int pct = next ? (int)(100 * (c.droneEver - creature::threshold(s)) / (next - creature::threshold(s))) : 100;
   lv_bar_set_value(creaBar, pct, LV_ANIM_OFF);
-  if (creature::consumeEvolved()) flashLeft = 6;
-  if (flashLeft > 0) {  // evolution flash: white on/off, then new sprite
-    if (--flashLeft % 2) lv_obj_remove_flag(flash, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
+  if (c.droneEver > lastDrones) { lastDrones = c.droneEver; reactReq = true; }
+  if (creature::consumeEvolved() && evoStep < 0 && s > 0) {
+    evoFrom = s - 1; evoStep = 0;
+    if (animTimer) { lv_timer_set_period(animTimer, 1); lv_timer_reset(animTimer); }
   }
-  if (creature::sprite() != bigSrc) lv_image_set_src(creaImg, upscale(creature::sprite()));
 }
 
 void buildMenu() {
@@ -400,6 +474,9 @@ namespace ui {
 void begin() { buildChrome(); show(BOOT); }
 void show(Screen s) {
   lv_obj_clean(content);
+  if (animTimer) { lv_timer_delete(animTimer); animTimer = nullptr; }
+  evoStep = -1;
+  if (liveBuf) { lv_image_cache_drop(&liveDsc); free(liveBuf); liveBuf = nullptr; }
   if (big) { lv_image_cache_drop(&bigDsc); free(big); big = nullptr; bigSrc = nullptr; }
   cur = s;
   const bool tabs = s != BOOT && s != OTA && s != UNSIGNED_CONFIRM;
