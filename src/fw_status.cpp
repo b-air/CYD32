@@ -32,8 +32,8 @@ void begin() {
   }
   if (uns) { k = UNSIGNED; strcpy(fpr, "----------------"); return; }
   strcpy(fpr, slot == 1 ? CYD32_KEY1_FPR : CYD32_KEY0_FPR);
-  const bool keyPresent = slot == 1 ? CYD32_KEY1_PRESENT : CYD32_KEY0_PRESENT;
-  k = (CYD32_OFFICIAL && keyPresent && strcmp(fpr, CYD32_OFFICIAL_FPR) == 0) ? OFFICIAL : FORK;
+  const bool slotHasPub = slot == 1 ? CYD32_KEY1_PRESENT : CYD32_KEY0_PRESENT;
+  k = (CYD32_OFFICIAL && slotHasPub && strcmp(fpr, CYD32_OFFICIAL_FPR) == 0) ? OFFICIAL : FORK;
 }
 Kind kind() { return k; }
 const char *kindStr() { return k == OFFICIAL ? "Official" : k == FORK ? "Fork" : "Unsigned"; }
