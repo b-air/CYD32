@@ -1,34 +1,52 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # SPDX-FileCopyrightText: 2026 CYD32 contributors
+# Required checks never use on-level path filters: a `changes` job decides what
+# runs. gitleaks and denylist always run (drafts included).
 name: ci
 on:
   pull_request:
-    paths:
-      - "src/**"
-      - "include/**"
-      - "lib/**"
-      - "platformio.ini"
-      - "partitions.csv"
-      - "scripts/**"
-      - ".github/**"
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "include/**"
-      - "lib/**"
-      - "platformio.ini"
-      - "partitions.csv"
-      - "scripts/**"
-      - ".github/**"
   workflow_dispatch:
 permissions: {}
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    timeout-minutes: 5
+    outputs:
+      firmware: ${{ steps.f.outputs.firmware == 'true' || steps.f.outputs.full == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: f
+        with:
+          filters: |
+            full:
+              - ".github/**"
+              - "platformio.ini"
+              - "partitions*.csv"
+            firmware:
+              - "src/**"
+              - "include/**"
+              - "lib/**"
+              - "scripts/**"
+
   build:
+    needs: changes
+    if: ${{ !github.event.pull_request.draft && needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -52,13 +70,14 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
       - run: pip install platformio==6.1.16
       - name: Build
-        run: pio run -e cyd
-      - name: Size report
         run: |
-          pio run -e cyd -t size | tee size.txt
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; grep -E 'RAM:|Flash:' size.txt >> "$GITHUB_STEP_SUMMARY" || true; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          set -o pipefail
+          pio run -e cyd | tee build.log
+          { echo '```'; grep -E 'RAM:|Flash:' build.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   guard:
+    needs: changes
+    if: ${{ !github.event.pull_request.draft && needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
