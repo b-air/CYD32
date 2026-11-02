@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* SPDX-FileCopyrightText: 2026 CYD32 contributors (design assets, unmodified below this header) */
+/* SPDX-FileCopyrightText: 2026 CYD32 contributors */
+/* Design assets, modified for CYD32. */
 #pragma once
 /* CYD32 — sonar UI palette, RGB565 values + original RGB888 hex */
 #define CYD32_COL_BG        0x0884  /* #081020 background */

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* SPDX-FileCopyrightText: 2026 CYD32 contributors (design assets, unmodified below this header) */
+/* SPDX-FileCopyrightText: 2026 CYD32 contributors */
+/* Design assets, modified for CYD32. */
 #pragma once
 #include "lvgl.h"
 /* CYD32 creature sprites: 5 creatures x 5 stages, 64x64 LV_COLOR_FORMAT_I4 (LVGL 9) */

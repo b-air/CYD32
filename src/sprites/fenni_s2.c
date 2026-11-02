@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* SPDX-FileCopyrightText: 2026 CYD32 contributors (design assets, unmodified below this header) */
+/* SPDX-FileCopyrightText: 2026 CYD32 contributors */
+/* Design assets, modified for CYD32. */
 /* fenni_s2 - 64x64 LV_COLOR_FORMAT_I4, 2112 bytes. Palette shared with fenni_s2_anim.c */
 #include "lvgl.h"
 

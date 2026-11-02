@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-/* SPDX-FileCopyrightText: 2026 CYD32 contributors (design assets, unmodified below this header) */
+/* SPDX-FileCopyrightText: 2026 CYD32 contributors */
+/* Design assets, modified for CYD32. */
 /* poulpi_s4 animation: delta patches (I4, palette of poulpi_s4) */
 #include "cyd32_sprites.h"
 

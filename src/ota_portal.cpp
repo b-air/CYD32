@@ -114,6 +114,9 @@ void handleRoot() {
 }
 
 uint32_t confirmStart = 0;
+// True only for the upload whose START passed the Host/token checks while WAITING.
+// Unauthorized uploads are ignored silently so they cannot fail() a pending image.
+bool uploadAuthorized = false;
 // Searches the freshly written slot for the fw_version marker.
 bool findMarker(fw_version::Marker &out) {
   static uint8_t buf[1024 + sizeof(fw_version::Marker)];
@@ -138,10 +141,12 @@ void activate() {
 void handleUploadChunk() {
   HTTPUpload &up = server->upload();
   if (up.status == UPLOAD_FILE_START) {
+    uploadAuthorized = false;
     if (st.phase != ota_portal::WAITING) return;
     failed = false; holdLen = 0; st.received = 0; target = nullptr;
     if (!hostOk()) { fail("rejected: bad Host header"); return; }
     if (!ctEqual(server->arg("t"), token)) { fail("rejected: bad session token"); return; }
+    uploadAuthorized = true;
     st.expected = server->clientContentLength();
     target = esp_ota_get_next_update_partition(nullptr);
     if (!target) { fail("no OTA partition"); return; }
@@ -153,11 +158,14 @@ void handleUploadChunk() {
     st.phase = ota_portal::RECEIVING;
     setMsg("receiving...");
   } else if (up.status == UPLOAD_FILE_WRITE) {
+    if (!uploadAuthorized) return;
     if (st.received == 0 && up.currentSize > 0 && up.buf[0] != 0xE9) { fail("not an ESP32 image"); return; }
     if (failed) return;
     if (st.received + up.currentSize > target->size + ota_sig::kTrailer) { fail("file larger than the OTA slot"); return; }
     feed(up.buf, up.currentSize);
   } else if (up.status == UPLOAD_FILE_END) {
+    if (!uploadAuthorized) return;
+    uploadAuthorized = false;
     if (failed) return;
     st.phase = ota_portal::VERIFYING;
     if (holdLen < ota_sig::kTrailer) { fail("file too short"); return; }
@@ -191,6 +199,8 @@ void handleUploadChunk() {
     }
     activate();
   } else if (up.status == UPLOAD_FILE_ABORTED) {
+    if (!uploadAuthorized) return;
+    uploadAuthorized = false;
     fail("transfer aborted");
   }
 }
