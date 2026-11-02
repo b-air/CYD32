@@ -1,0 +1,38 @@
+CYD32
+Copyright (C) 2026 CYD32 contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3 only
+(SPDX: AGPL-3.0-only), as published by the Free Software Foundation.
+It is distributed WITHOUT ANY WARRANTY. See LICENSE for the full text.
+
+Licence choice
+--------------
+CYD32 may reuse code from the Bruce firmware, which is published under the
+GNU AGPL version 3 (its LICENSE carries no "or any later version" notice).
+CYD32 therefore uses the same terms: AGPL-3.0-only.
+
+Upstream project that code may be taken from
+--------------------------------------------
+Bruce firmware - https://github.com/pr3y/Bruce
+  Reference commit: a59213f3ec6cd302fa32c2042b2700c9c24d991a
+  Licence: AGPL-3.0
+  This release contains NO file copied from Bruce. Any file later taken from
+  Bruce keeps its original copyright and licence header and gains a dated
+  "Modified by CYD32 contributors on YYYY-MM-DD" note (AGPL-3.0 section 5a),
+  and is listed here. Offensive Bruce modules (deauth, BLE spam, beacon spam,
+  jammers, evil portal, BadUSB, IR TV-B-Gone, ...) are never included; CI
+  enforces this.
+
+Third-party components (linked at build time, not vendored)
+-----------------------------------------------------------
+LVGL 9.2.2              MIT              LICENSES/MIT-LVGL.txt
+LovyanGFX 1.2.0         FreeBSD (BSD-2-Clause) with Adafruit BSD and
+                        TFT_eSPI-derived notices   LICENSES/LovyanGFX-FreeBSD.txt
+NimBLE-Arduino 1.4.3    Apache-2.0       LICENSES/NimBLE-Arduino-Apache-2.0.txt
+arduino-esp32 2.0.17    LGPL-2.1-or-later LICENSES/LGPL-2.1-or-later.txt
+ESP-IDF 4.4 (incl. mbedTLS)  Apache-2.0  LICENSES/Apache-2.0.txt
+opendroneid (planned, phase 3)  Apache-2.0  LICENSES/Apache-2.0.txt
+
+UI artwork (sprites, palette, mockups in docs/design) is original work of the
+CYD32 contributors, under AGPL-3.0-only.

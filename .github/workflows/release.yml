@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2026 CYD32 contributors
+# Builds an UNSIGNED release. Signing is done locally by the maintainer
+# (docs/RELEASING.md); no private key is stored in GitHub.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # create the release
+      id-token: write        # build provenance attestation
+      attestations: write
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.12"
+      - run: pip install platformio==6.1.16
+      - name: Build (official)
+        env:
+          CYD32_OFFICIAL: "1"
+          CYD32_VERSION: ${{ github.ref_name }}
+          CYD32_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          test -f keys/ota_pub_0.pem || echo "::warning::keys/ota_pub_0.pem missing: firmware will refuse every signed OTA"
+          pio run -e cyd
+          pio pkg list -e cyd > dist-deps.txt
+      - name: Assemble assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          b=.pio/build/cyd
+          cp "$b/firmware.bin" "$b/bootloader.bin" "$b/partitions.bin" dist/
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin dist/
+          # Complete corresponding source (AGPL-3.0 section 6): tracked files at the tag + resolved dependency lock.
+          git archive --format=tar --prefix="cyd32-${TAG}/" -o "dist/cyd32-${TAG}-source.tar" "$GITHUB_SHA"
+          mkdir -p "lock/cyd32-${TAG}" && cp dist-deps.txt "lock/cyd32-${TAG}/dependencies.lock.txt"
+          tar -rf "dist/cyd32-${TAG}-source.tar" -C lock "cyd32-${TAG}/dependencies.lock.txt"
+          gzip -9n "dist/cyd32-${TAG}-source.tar"
+      - name: SBOM
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Blocking check - no release without its source
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          src="dist/cyd32-${TAG}-source.tar.gz"
+          test -s "$src" || { echo "::error::source archive missing"; exit 1; }
+          for f in platformio.ini partitions.csv src/main.cpp scripts/sign.sh LICENSE NOTICE dependencies.lock.txt; do
+            tar -tzf "$src" | grep -q "^cyd32-${TAG}/$f$" || { echo "::error::source archive lacks $f"; exit 1; }
+          done
+          grep -q "cyd32-${TAG}-source.tar.gz" dist/SHA256SUMS
+      - name: Build provenance
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
+        with:
+          subject-path: "dist/*"
+      - name: Publish release (unsigned; signed .bin is uploaded manually)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --verify-tag \
+            --notes "Unsigned build artefacts. The maintainer signs firmware.bin locally and uploads firmware-signed.bin (see docs/RELEASING.md). Full corresponding source: cyd32-${TAG}-source.tar.gz."

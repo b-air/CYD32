@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2026 CYD32 contributors
+name: ci
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "platformio.ini"
+      - "partitions.csv"
+      - "scripts/**"
+      - ".github/**"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "platformio.ini"
+      - "partitions.csv"
+      - "scripts/**"
+      - ".github/**"
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio==6.1.16
+      - name: Build
+        run: pio run -e cyd
+      - name: Size report
+        run: |
+          pio run -e cyd -t size | tee size.txt
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; grep -E 'RAM:|Flash:' size.txt >> "$GITHUB_STEP_SUMMARY" || true; echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  guard:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Passive-only guard
+        run: scripts/guard.sh
+
+  gitleaks:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: gitleaks (pinned binary, checksum verified)
+        env:
+          GL_VER: 8.30.1
+          GL_SHA: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSL -o gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VER}/gitleaks_${GL_VER}_linux_x64.tar.gz"
+          echo "${GL_SHA}  gl.tgz" | sha256sum -c -
+          tar -xzf gl.tgz gitleaks
+          ./gitleaks git --redact --no-banner -v .
+
+  denylist:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Deny-list check (list comes from a secret, matches never printed)
+        env:
+          DENYLIST_B64: ${{ secrets.DENYLIST_B64 }}
+          IS_MAIN: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$DENYLIST_B64" ]; then
+            if [ "$IS_MAIN" = "true" ]; then echo "::error::DENYLIST_B64 secret is required on main"; exit 1; fi
+            echo "::warning::DENYLIST_B64 not available (fork PR or not configured): deny-list check skipped"; exit 0
+          fi
+          umask 077
+          list="$RUNNER_TEMP/dl.txt"
+          printf '%s' "$DENYLIST_B64" | base64 -d > "$list"
+          if [ -n "$BASE_SHA" ]; then export DENYLIST_GIT_RANGE="$BASE_SHA..HEAD"; fi
+          rc=0; scripts/denylist-check.sh "$list" || rc=$?
+          rm -f "$list"
+          exit $rc
