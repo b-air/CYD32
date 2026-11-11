@@ -209,142 +209,285 @@ void refreshGrid() {
   lv_label_set_text(gridLog, t);
 }
 
-// LVGL 9.2 cannot scale indexed (I4/A1) images, so each frame is expanded
-// into a 128x128 RGB565A8 buffer (nearest neighbour, x2).
-uint8_t *big = nullptr;  // heap, only while the creature screen is shown
-constexpr size_t kBigSize = 128 * 128 * 3;
-lv_image_dsc_t bigDsc;
-const lv_image_dsc_t *bigSrc = nullptr;
-// white = draw every opaque pixel white (evolution silhouette). A1 masks are always white.
-const lv_image_dsc_t *upscale(const lv_image_dsc_t *src, bool white = false) {
-  if (!big) return src;  // allocation failed: show the sprite at 1x
-  bigSrc = src;
-  const bool a1 = src->header.cf == LV_COLOR_FORMAT_A1;
-  const uint8_t *pal = src->data, *px = a1 ? src->data : src->data + 64;
-  uint16_t *rgb = (uint16_t *)big; uint8_t *alpha = big + 128 * 128 * 2;
-  for (int y = 0; y < 128; y++)
-    for (int x = 0; x < 128; x++) {
-      const int sx = x / 2, sy = y / 2, o = y * 128 + x;
-      if (a1) {
-        const bool on = px[sy * 8 + sx / 8] & (0x80 >> (sx & 7));
-        rgb[o] = 0xFFFF; alpha[o] = on ? 0xFF : 0;
-        continue;
-      }
-      const uint8_t b = px[sy * 32 + sx / 2];
-      const uint8_t *c = pal + ((sx & 1) ? (b & 0x0f) : (b >> 4)) * 4;  // B,G,R,A
-      rgb[o] = white ? 0xFFFF : ((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3);
-      alpha[o] = c[3];
-    }
-  bigDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-  bigDsc.header.cf = LV_COLOR_FORMAT_RGB565A8;
-  bigDsc.header.w = 128; bigDsc.header.h = 128; bigDsc.header.stride = 256;
-  bigDsc.data_size = kBigSize; bigDsc.data = big;
-  lv_image_cache_drop(&bigDsc);
-  return &bigDsc;
-}
-
-// Creature animation (design README): a timer patches a 2,112-byte RAM copy of
-// the base sprite with delta frames; idle loops, reaction plays once on a new
-// drone or a PET/FEED tap; evolution follows cyd32_evo_ms.
-constexpr size_t kLiveSize = 2112;
-uint8_t *liveBuf = nullptr;  // heap (DRAM is full), only while the creature screen is shown
-lv_image_dsc_t liveDsc;
+// Light creature renderer: decode the current I4 frame (key + sequential
+// deltas) into one shared 64x64 RGB565A8 buffer (12 KB) and zoom with LVGL.
+// Extra 4 KB: I4 playback state + a compose scratch so trait overlays do not
+// bake into the animation buffer. LVGL 9 cannot scale I4 directly.
+constexpr int kSpr = 64;
+constexpr size_t kI4Size = kSpr * kSpr / 2;
+constexpr size_t kRgbSize = kSpr * kSpr * 3;
+uint8_t *pool = nullptr, *i4Buf = nullptr, *i4Draw = nullptr, *rgbBuf = nullptr;
+lv_image_dsc_t rgbDsc;
+const cyd32_creature_t *curSpec = nullptr;
 const cyd32_anim_t *anim = nullptr;
 lv_timer_t *animTimer = nullptr;
-uint8_t animFrame = 0;
-bool reacting = false, reactReq = false;
-int8_t evoStep = -1;        // -1 = not evolving, 0..6 = step in cyd32_evo_ms
-uint8_t evoFrom = 0;
-uint32_t lastDrones = 0;
-int animScale() { return big ? 2 : 1; }
-void showLive() {
-  lv_image_cache_drop(&liveDsc);
-  lv_image_set_src(creaImg, upscale(&liveDsc));
+uint16_t animFrame = 0;
+bool playingHappy = false, reactReq = false, playingHatch = false;
+uint32_t lastUniques = 0, growStart = 0, popStart = 0;
+uint16_t growFrom = 256, growTo = 256;
+uint8_t popping = 0;
+constexpr uint32_t kGrowMs = 560, kPopMs = 560;
+
+float backEase(float t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const float s = 1.70158f;
+  t -= 1.f;
+  return t * t * ((s + 1.f) * t + s) + 1.f;
+}
+void i4Roll(uint8_t *buf, int8_t dx, int8_t dy) {
+  if (dy) {
+    uint8_t *tmp = rgbBuf;
+    memcpy(tmp, buf, kI4Size);
+    for (int y = 0; y < kSpr; y++) {
+      const int sy = (y - dy) & (kSpr - 1);
+      memcpy(buf + y * 32, tmp + sy * 32, 32);
+    }
+  }
+  if (!dx) return;
+  for (int y = 0; y < kSpr; y++) {
+    uint8_t *row = buf + y * 32;
+    uint8_t pix[kSpr], out[kSpr];
+    for (int x = 0; x < kSpr; x++) {
+      const uint8_t b = row[x / 2];
+      pix[x] = (x & 1) ? (uint8_t)(b & 0x0f) : (uint8_t)(b >> 4);
+    }
+    for (int x = 0; x < kSpr; x++) out[x] = pix[(x - dx) & (kSpr - 1)];
+    for (int x = 0; x < kSpr; x += 2) row[x / 2] = (uint8_t)((out[x] << 4) | out[x + 1]);
+  }
+}
+void i4Blit(uint8_t *dst, int x, int y, int w, int h, const uint8_t *packed, bool skip0) {
+  const int sw = (w + 1) / 2;
+  for (int j = 0; j < h; j++) {
+    for (int i = 0; i < w; i++) {
+      uint8_t v = packed[j * sw + i / 2];
+      v = (i & 1) ? (uint8_t)(v & 0x0f) : (uint8_t)(v >> 4);
+      if (skip0 && !v) continue;
+      const int X = x + i, Y = y + j;
+      if ((unsigned)X >= kSpr || (unsigned)Y >= kSpr) continue;
+      uint8_t *d = &dst[Y * 32 + X / 2];
+      *d = (X & 1) ? (uint8_t)((*d & 0xF0) | v) : (uint8_t)((*d & 0x0F) | (v << 4));
+    }
+  }
+}
+void applyDelta(const uint8_t *d) {
+  const int8_t dx = (int8_t)d[0], dy = (int8_t)d[1];
+  const uint8_t nrect = d[2];
+  const uint8_t *p = d + 3;
+  i4Roll(i4Buf, dx, dy);
+  for (uint8_t r = 0; r < nrect; r++) {
+    const uint8_t x = p[0], y = p[1], w = p[2], h = p[3];
+    p += 4;
+    const int nbytes = ((w + 1) / 2) * h;
+    i4Blit(i4Buf, x, y, w, h, p, false);
+    p += nbytes;
+  }
+}
+void gotoFrame(const cyd32_anim_t *a, uint16_t i) {
+  memcpy(i4Buf, a->key, kI4Size);
+  if (i >= a->n) i = (uint16_t)(a->n ? a->n - 1 : 0);
+  for (uint16_t f = 1; f <= i; f++) applyDelta(a->delta + a->off[f - 1]);
+  animFrame = i;
+}
+void blitTrait(uint8_t *dst, const cyd32_trait_t *tr, int frame, float scale) {
+  if (!tr->px || !tr->anchor || scale <= 0) return;
+  const int nw = (int)(tr->w * scale + 0.5f);
+  const int nh = (int)(tr->h * scale + 0.5f);
+  if (nw < 1 || nh < 1) return;
+  const int sw = (tr->w + 1) / 2;
+  const int inst = tr->inst ? tr->inst : 1;
+  for (int k = 0; k < inst; k++) {
+    const int ax = tr->anchor[frame * 4 + k * 2];
+    const int ay = tr->anchor[frame * 4 + k * 2 + 1];
+    const int px0 = ax + ((int)tr->w - nw) / 2;
+    const int py0 = ay + ((int)tr->h - nh) / 2;
+    for (int j = 0; j < nh; j++) {
+      const int sy = j * tr->h / nh;
+      for (int i = 0; i < nw; i++) {
+        const int sx = i * tr->w / nw;
+        uint8_t v = tr->px[sy * sw + sx / 2];
+        v = (sx & 1) ? (uint8_t)(v & 0x0f) : (uint8_t)(v >> 4);
+        if (!v) continue;
+        const int X = px0 + i, Y = py0 + j;
+        if ((unsigned)X >= kSpr || (unsigned)Y >= kSpr) continue;
+        uint8_t *d = &dst[Y * 32 + X / 2];
+        *d = (X & 1) ? (uint8_t)((*d & 0xF0) | v) : (uint8_t)((*d & 0x0F) | (v << 4));
+      }
+    }
+  }
+}
+void decodeRgb(const uint8_t *src, const uint32_t *pal) {
+  uint16_t *rgb = (uint16_t *)rgbBuf;
+  uint8_t *alpha = rgbBuf + kSpr * kSpr * 2;
+  for (int y = 0; y < kSpr; y++) {
+    for (int x = 0; x < kSpr; x++) {
+      const uint8_t b = src[y * 32 + x / 2];
+      const uint8_t idx = (x & 1) ? (uint8_t)(b & 0x0f) : (uint8_t)(b >> 4);
+      const uint32_t c = pal[idx];
+      const int o = y * kSpr + x;
+      rgb[o] = (uint16_t)((((c >> 16) & 0xF8) << 8) | (((c >> 8) & 0xFC) << 3) | ((c >> 3) & 0x1F));
+      alpha[o] = (uint8_t)(c >> 24);
+    }
+  }
+}
+uint16_t currentZoom() {
+  const uint8_t s = creature::size();
+  const uint16_t target = CYD32_SIZE_ZOOM[s ? s - 1 : 0];
+  if (!growStart) return target;
+  const uint32_t dt = nowMs - growStart;
+  if (dt >= kGrowMs) { growStart = 0; growFrom = growTo = target; return target; }
+  const float u = backEase((float)dt / (float)kGrowMs);
+  return (uint16_t)(growFrom + (int)((int)growTo - (int)growFrom) * u);
+}
+void compose() {
+  if (!i4Buf || !rgbBuf || !anim || !creaImg) return;
+  memcpy(i4Draw, i4Buf, kI4Size);
+  const uint8_t bits = creature::unlockedTraits();
+  if (bits && curSpec && creature::size() >= 2) {
+    const int nAnc = curSpec->adult_idle ? curSpec->adult_idle->n : 12;
+    const int fr = nAnc ? (int)(animFrame % nAnc) : 0;
+    const float popT = popping && popStart ? backEase((float)(nowMs - popStart) / (float)kPopMs) : 1.f;
+    for (int i = 0; i < 8; i++) {
+      if (!(bits & (uint8_t)(1u << i))) continue;
+      float sc = 1.f;
+      if (popping & (uint8_t)(1u << i)) sc = popT;
+      blitTrait(i4Draw, &curSpec->traits[i], fr, sc);
+    }
+  }
+  decodeRgb(i4Draw, anim->pal);
+  rgbDsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  rgbDsc.header.cf = LV_COLOR_FORMAT_RGB565A8;
+  rgbDsc.header.w = kSpr;
+  rgbDsc.header.h = kSpr;
+  rgbDsc.header.stride = kSpr * 2;
+  rgbDsc.data_size = kRgbSize;
+  rgbDsc.data = rgbBuf;
+  lv_image_cache_drop(&rgbDsc);
+  lv_image_set_src(creaImg, &rgbDsc);
+  const uint16_t z = currentZoom();
+  uint16_t zy = z;
+  const bool idle = anim && !playingHappy && !playingHatch &&
+                    (anim == curSpec->baby_idle || anim == curSpec->adult_idle ||
+                     anim == curSpec->cth_idle || anim == curSpec->cth_keys);
+  if (idle) {
+    const float breath = 0.03f * sinf(nowMs * 0.004f);
+    zy = (uint16_t)((float)z * (1.f + breath) + 0.5f);
+    if (zy < 1) zy = 1;
+  }
+  lv_image_set_pivot(creaImg, kSpr / 2, kSpr);
+  lv_image_set_antialias(creaImg, false);
+  lv_image_set_scale_x(creaImg, z);
+  lv_image_set_scale_y(creaImg, zy);
   lv_obj_invalidate(creaImg);
 }
-void blit(const cyd32_patch_t *p) {  // restore base, then copy the patch (as in the design README)
-  memcpy(liveBuf, anim->base->data, kLiveSize);
-  const uint8_t *s = anim->pix + p->ofs; uint8_t *px = liveBuf + 64;
-  const int sw = (p->w + 1) / 2;
-  for (int y = 0; y < p->h; y++)
-    for (int x = 0; x < p->w; x++) {
-      uint8_t v = s[y * sw + x / 2]; v = (x & 1) ? v & 0x0F : v >> 4;
-      const int X = p->x + x, Y = p->y + y;
-      if (X >= 64 || Y >= 64) continue;
-      uint8_t *d = &px[Y * 32 + X / 2];
-      *d = (X & 1) ? (*d & 0xF0) | v : (*d & 0x0F) | (v << 4);
-    }
+void setAnim(const cyd32_anim_t *a, uint16_t frame = 0) {
+  if (!i4Buf || !a) return;
+  anim = a;
+  gotoFrame(a, frame);
 }
-void setAnim(const cyd32_anim_t *a) {
-  if (!liveBuf) { anim = a; liveDsc = *a->base; return; }  // no RAM: static sprite
-  anim = a; animFrame = 0; reacting = false;
-  liveDsc = *a->base; liveDsc.data = liveBuf;
-  memcpy(liveBuf, a->base->data, kLiveSize);
+void startIdle() {
+  playingHappy = false;
+  playingHatch = false;
+  if (!curSpec) return;
+  const uint8_t cth = creature::cthulhuStage();
+  if (cth >= 5) setAnim(curSpec->cth_idle, 0);
+  else if (cth >= 1) setAnim(curSpec->cth_keys, (uint16_t)(2 * cth - 1));
+  else if (creature::size() <= 1) setAnim(curSpec->baby_idle, 0);
+  else setAnim(curSpec->adult_idle, 0);
+}
+void startHappy() {
+  if (!curSpec || playingHatch) return;
+  if (creature::cthulhuStage() >= 1) return;  // Cthulhu keys/idle have no happy clip
+  playingHappy = true;
+  setAnim(creature::size() <= 1 ? curSpec->baby_happy : curSpec->adult_happy, 0);
 }
 void animTick(lv_timer_t *t) {
-  if (!liveBuf) return;
-  if (evoStep >= 0) {  // evolution timeline
-    const cyd32_anim_t *from = creature::anim(evoFrom);
-    lv_obj_set_style_translate_x(creaImg, 0, 0); lv_obj_set_style_translate_y(creaImg, 0, 0);
-    const bool flashOn = evoStep == 1 || evoStep == 3 || evoStep == 5;
-    if (flashOn) lv_obj_remove_flag(flash, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
-    if (evoStep == 0) lv_image_set_src(creaImg, upscale(from->base, true));
-    if (evoStep == 2 && from->evo_a) lv_image_set_src(creaImg, upscale(from->evo_a));
-    if (evoStep == 4 && from->evo_b) lv_image_set_src(creaImg, upscale(from->evo_b));
-    if (evoStep == 6) { setAnim(creature::anim(creature::stage())); showLive(); }
-    lv_timer_set_period(t, cyd32_evo_ms[evoStep]);
-    if (++evoStep > 6) evoStep = -1;
-    return;
+  nowMs = lv_tick_get();
+  if (popping && popStart && nowMs - popStart >= kPopMs) { popping = 0; popStart = 0; }
+  if (i4Buf && anim && curSpec && anim->ms && anim != curSpec->cth_keys) {
+    if ((uint16_t)(animFrame + 1) < anim->n) {
+      applyDelta(anim->delta + anim->off[animFrame]);
+      animFrame++;
+    } else if (playingHatch || playingHappy) {
+      startIdle();
+    } else {
+      memcpy(i4Buf, anim->key, kI4Size);
+      animFrame = 0;
+    }
   }
-  if (reactReq && anim->n_react) { reactReq = false; reacting = true; animFrame = anim->n_idle; }
-  const uint8_t n = anim->n_idle + (reacting ? anim->n_react : 0);
-  if (!n) return;
-  if (animFrame >= n) animFrame = 0;
-  const cyd32_patch_t *p = &anim->patch[animFrame];
-  blit(p); showLive();
-  lv_obj_set_style_translate_x(creaImg, p->dx * animScale(), 0);
-  lv_obj_set_style_translate_y(creaImg, p->dy * animScale(), 0);
-  lv_timer_set_period(t, p->ms ? p->ms : 100);
-  if (++animFrame >= n) { animFrame = 0; reacting = false; }
+  if (reactReq && !playingHatch && !playingHappy) { reactReq = false; startHappy(); }
+  compose();
+  uint32_t period = 50;
+  if (anim && anim->ms) period = anim->ms;
+  lv_timer_set_period(t, period);
 }
 void creaAction(lv_event_t *e) { creature::addXp((uintptr_t)lv_event_get_user_data(e)); reactReq = true; }
 void buildCreature() {
+  curSpec = creature::spec();
   creaImg = lv_image_create(content);
-  bigSrc = nullptr; evoStep = -1;
-  if (!big) big = (uint8_t *)malloc(kBigSize);
-  if (!liveBuf) liveBuf = (uint8_t *)malloc(kLiveSize);
-  setAnim(creature::anim(creature::stage()));
-  showLive();
-  lv_obj_set_pos(creaImg, big ? 22 : 54, big ? 26 : 58);
+  lv_obj_set_pos(creaImg, 48, 40);
+  if (!pool) {
+    pool = (uint8_t *)malloc(kI4Size * 2 + kRgbSize);
+    if (pool) { i4Buf = pool; i4Draw = pool + kI4Size; rgbBuf = pool + kI4Size * 2; }
+  }
+  memset(&rgbDsc, 0, sizeof rgbDsc);
+  playingHappy = false;
+  reactReq = false;
+  if (creature::consumeHatched()) {
+    playingHatch = true;
+    setAnim(curSpec->hatch, 0);
+  } else {
+    startIdle();
+  }
+  compose();
   creaInfo = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
   lv_obj_set_pos(creaInfo, 176, 12);
   creaBar = lv_bar_create(content);
-  lv_obj_set_size(creaBar, 130, 8); lv_obj_set_pos(creaBar, 176, 92);
+  lv_obj_set_size(creaBar, 130, 8); lv_obj_set_pos(creaBar, 176, 100);
   lv_obj_set_style_bg_color(creaBar, C(CYD32_COL_GRID), 0);
   lv_obj_set_style_bg_color(creaBar, C(CYD32_COL_CYAN), LV_PART_INDICATOR);
   button(content, "PET", 176, 120, 62, 32, creaAction, (void *)1, CYD32_COL_CYAN);
   button(content, "FEED", 244, 120, 62, 32, creaAction, (void *)2, CYD32_COL_CYAN);
   flash = box(content, 0, 0, 320, kContentH, CYD32_COL_WHITE);
   lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
-  lastDrones = det::counts().droneEver;
-  animTimer = lv_timer_create(animTick, 100, nullptr);
+  lastUniques = creature::uniqueCount();
+  growFrom = growTo = currentZoom();
+  animTimer = lv_timer_create(animTick, 80, nullptr);
 }
 void refreshCreature() {
-  const uint8_t s = creature::stage();
-  const det::Counts c = det::counts();
-  char t[128];
-  const uint32_t next = creature::threshold(s + 1);
-  snprintf(t, sizeof t, "%s  stage s%u\nXP %lu\ndrones seen %lu\nnext stage %s%lu\n\nWIFI %u  BLE %u",
-           creature::name(), s, (unsigned long)creature::xp(), (unsigned long)c.droneEver,
-           next ? "at " : "max ", (unsigned long)next, c.wifi, c.ble);
-  lv_label_set_text(creaInfo, t);
-  int pct = next ? (int)(100 * (c.droneEver - creature::threshold(s)) / (next - creature::threshold(s))) : 100;
-  lv_bar_set_value(creaBar, pct, LV_ANIM_OFF);
-  if (c.droneEver > lastDrones) { lastDrones = c.droneEver; reactReq = true; }
-  if (creature::consumeEvolved() && evoStep < 0 && s > 0) {
-    evoFrom = s - 1; evoStep = 0;
-    if (animTimer) { lv_timer_set_period(animTimer, 1); lv_timer_reset(animTimer); }
+  const uint8_t s = creature::size();
+  const uint8_t cth = creature::cthulhuStage();
+  const uint32_t next = creature::nextSizeAt();
+  const uint32_t uniq = creature::uniqueCount();
+  const uint32_t drones = creature::droneCount();
+  char traits[48] = "";
+  const char *tn[8] = {"TRK", "AP", "HOT", "OPEN", "2.4", "5", "6", "7"};
+  const uint8_t bits = creature::unlockedTraits();
+  for (int i = 0; i < 8; i++) {
+    if (!(bits & (uint8_t)(1u << i))) continue;
+    if (traits[0]) strncat(traits, " ", sizeof traits - strlen(traits) - 1);
+    strncat(traits, tn[i], sizeof traits - strlen(traits) - 1);
   }
+  if (!traits[0]) strncpy(traits, "-", sizeof traits - 1);
+  char t[192];
+  snprintf(t, sizeof t, "%s\nsize %u\nuniq %lu\nRID  %lu\nnext %s%lu\nCth  %u\nXP   %lu\n%s",
+           creature::name(), s, (unsigned long)uniq, (unsigned long)drones,
+           next ? "" : "max ", (unsigned long)next, cth, (unsigned long)creature::xp(), traits);
+  lv_label_set_text(creaInfo, t);
+  const uint32_t lo = creature::sizeFloor();
+  int pct = next ? (int)(100 * (uniq - lo) / (next - lo)) : 100;
+  if (pct < 0) pct = 0; if (pct > 100) pct = 100;
+  lv_bar_set_value(creaBar, pct, LV_ANIM_OFF);
+  if (uniq > lastUniques) { lastUniques = uniq; reactReq = true; }
+  if (creature::consumeGrew()) {
+    growFrom = growTo;
+    growTo = CYD32_SIZE_ZOOM[s ? s - 1 : 0];
+    growStart = nowMs ? nowMs : lv_tick_get();
+    if (!playingHatch) startIdle();
+  }
+  if (creature::consumeCthulhuUp() && !playingHatch) startIdle();
+  const uint8_t fresh = creature::consumeNewTraits();
+  if (fresh) { popping = fresh; popStart = nowMs ? nowMs : lv_tick_get(); }
 }
 
 void buildMenu() {
@@ -475,9 +618,8 @@ void begin() { buildChrome(); show(BOOT); }
 void show(Screen s) {
   lv_obj_clean(content);
   if (animTimer) { lv_timer_delete(animTimer); animTimer = nullptr; }
-  evoStep = -1;
-  if (liveBuf) { lv_image_cache_drop(&liveDsc); free(liveBuf); liveBuf = nullptr; }
-  if (big) { lv_image_cache_drop(&bigDsc); free(big); big = nullptr; bigSrc = nullptr; }
+  if (pool) { lv_image_cache_drop(&rgbDsc); free(pool); pool = i4Buf = i4Draw = rgbBuf = nullptr; }
+  anim = nullptr; curSpec = nullptr; playingHappy = playingHatch = false;
   cur = s;
   const bool tabs = s != BOOT && s != OTA && s != UNSIGNED_CONFIRM;
   if (tabs) lv_obj_remove_flag(tabbar, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(tabbar, LV_OBJ_FLAG_HIDDEN);

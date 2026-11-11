@@ -108,7 +108,7 @@ void loop() {
   if (now - lastRefresh >= 250) {
     lastRefresh = now;
     const det::Counts c = det::counts();
-    creature::update(c.droneEver, c.wifi, c.ble);
+    creature::update(c.unique24h, (uint16_t)c.droneEver, c.seenTraits);
     ui::refresh();
   }
   selfTest();
