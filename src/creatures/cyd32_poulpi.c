@@ -10,7 +10,7 @@ const uint8_t poulpi_hatch_delta[7741] = {0,1,14,22,19,7,5,0,0,0,16,0,0,17,48,0,
 
 const uint16_t poulpi_hatch_off[21] = {0,348,705,1154,1626,1629,2243,2910,3532,4006,4734,5055,5424,5753,6019,6092,6233,6486,6773,7118,7453};
 
-const cyd32_anim_t poulpi_hatch = {poulpi_hatch_pal,poulpi_hatch_key,poulpi_hatch_delta,poulpi_hatch_off,22,90};
+const cyd32_anim_t poulpi_hatch = {poulpi_hatch_pal,poulpi_hatch_key,poulpi_hatch_delta,poulpi_hatch_off,22,90,sizeof poulpi_hatch_delta};
 
 const uint32_t poulpi_baby_idle_pal[16] = {0,4279766048,4282000944,4285156424,4289234024,4278251775,4280187452,4282435680,4288737408,4294507768,4294473880,4294483968,4292411312,4286193728,4280982088,4279521326};
 
@@ -20,7 +20,7 @@ const uint8_t poulpi_baby_idle_delta[2759] = {0,0,4,24,37,15,3,0,0,0,0,0,0,0,0,0
 
 const uint16_t poulpi_baby_idle_off[15] = {0,255,483,584,677,788,928,1177,1430,1688,1933,2175,2209,2376,2535};
 
-const cyd32_anim_t poulpi_baby_idle = {poulpi_baby_idle_pal,poulpi_baby_idle_key,poulpi_baby_idle_delta,poulpi_baby_idle_off,16,80};
+const cyd32_anim_t poulpi_baby_idle = {poulpi_baby_idle_pal,poulpi_baby_idle_key,poulpi_baby_idle_delta,poulpi_baby_idle_off,16,80,sizeof poulpi_baby_idle_delta};
 
 const uint32_t poulpi_baby_happy_pal[16] = {0,4279766048,4282000944,4285156424,4289234024,4278251775,4280187452,4282435680,4288737408,4294507768,4294473880,4294483968,4292411312,4286193728,4280982088,4279521326};
 
@@ -30,7 +30,7 @@ const uint8_t poulpi_baby_happy_delta[4152] = {0,1,4,26,38,11,2,0,0,0,0,0,0,0,25
 
 const uint16_t poulpi_baby_happy_off[15] = {0,295,575,833,1165,1480,1789,2010,2229,2483,2794,3117,3386,3677,3957};
 
-const cyd32_anim_t poulpi_baby_happy = {poulpi_baby_happy_pal,poulpi_baby_happy_key,poulpi_baby_happy_delta,poulpi_baby_happy_off,16,55};
+const cyd32_anim_t poulpi_baby_happy = {poulpi_baby_happy_pal,poulpi_baby_happy_key,poulpi_baby_happy_delta,poulpi_baby_happy_off,16,55,sizeof poulpi_baby_happy_delta};
 
 const uint32_t poulpi_adult_idle_pal[16] = {0,4279766048,4282000944,4285156424,4289234024,4278251775,4280187452,4282435680,4288737408,4294507768,4294473880,4294483968,4292411312,4286193728,4280982088,4279521326};
 
@@ -40,7 +40,7 @@ const uint8_t poulpi_adult_idle_delta[6856] = {0,0,16,20,20,24,4,0,0,0,0,0,0,0,0
 
 const uint16_t poulpi_adult_idle_off[15] = {0,621,1147,1610,1869,2094,2530,3020,3642,4214,4863,5358,5476,5751,6204};
 
-const cyd32_anim_t poulpi_adult_idle = {poulpi_adult_idle_pal,poulpi_adult_idle_key,poulpi_adult_idle_delta,poulpi_adult_idle_off,16,80};
+const cyd32_anim_t poulpi_adult_idle = {poulpi_adult_idle_pal,poulpi_adult_idle_key,poulpi_adult_idle_delta,poulpi_adult_idle_off,16,80,sizeof poulpi_adult_idle_delta};
 
 const uint32_t poulpi_adult_happy_pal[16] = {0,4279766048,4282000944,4285156424,4289234024,4278251775,4280187452,4282435680,4288737408,4294507768,4294473880,4294483968,4292411312,4286193728,4280982088,4279521326};
 
@@ -50,7 +50,7 @@ const uint8_t poulpi_adult_happy_delta[10725] = {0,0,11,20,20,24,4,0,0,0,0,0,0,0
 
 const uint16_t poulpi_adult_happy_off[15] = {0,757,1537,2290,3255,3984,4651,5173,5624,6274,6954,7879,8598,9368,10142};
 
-const cyd32_anim_t poulpi_adult_happy = {poulpi_adult_happy_pal,poulpi_adult_happy_key,poulpi_adult_happy_delta,poulpi_adult_happy_off,16,55};
+const cyd32_anim_t poulpi_adult_happy = {poulpi_adult_happy_pal,poulpi_adult_happy_key,poulpi_adult_happy_delta,poulpi_adult_happy_off,16,55,sizeof poulpi_adult_happy_delta};
 
 const uint32_t poulpi_cth_keys_pal[16] = {0,4278324234,4278591514,4278923814,4279521344,4278251728,4278860342,4279925354,4282435680,4292411384,4282449872,4280187452,4285139488,4290314228,4288737408,4280336552};
 
@@ -60,7 +60,7 @@ const uint8_t poulpi_cth_keys_delta[4656] = {0,0,4,20,24,25,5,24,136,56,136,56,1
 
 const uint16_t poulpi_cth_keys_off[9] = {0,370,926,1512,2109,2748,3059,3800,4238};
 
-const cyd32_anim_t poulpi_cth_keys = {poulpi_cth_keys_pal,poulpi_cth_keys_key,poulpi_cth_keys_delta,poulpi_cth_keys_off,10,0};
+const cyd32_anim_t poulpi_cth_keys = {poulpi_cth_keys_pal,poulpi_cth_keys_key,poulpi_cth_keys_delta,poulpi_cth_keys_off,10,0,sizeof poulpi_cth_keys_delta};
 
 const uint32_t poulpi_cth_idle_pal[16] = {0,4278324234,4278591514,4278923814,4279521344,4278251728,4278860342,4279925354,4282435680,4292411384,4282449872,4280187452,4285139488,4290314228,4288737408,4280336552};
 
@@ -70,7 +70,7 @@ const uint8_t poulpi_cth_idle_delta[3274] = {0,0,14,30,0,7,1,240,17,16,0,0,8,14,
 
 const uint16_t poulpi_cth_idle_off[5] = {0,785,1278,2042,2797};
 
-const cyd32_anim_t poulpi_cth_idle = {poulpi_cth_idle_pal,poulpi_cth_idle_key,poulpi_cth_idle_delta,poulpi_cth_idle_off,6,120};
+const cyd32_anim_t poulpi_cth_idle = {poulpi_cth_idle_pal,poulpi_cth_idle_key,poulpi_cth_idle_delta,poulpi_cth_idle_off,6,120,sizeof poulpi_cth_idle_delta};
 
 const uint8_t poulpi_trait_0_px[60] = {0,17,16,0,0,0,17,16,0,0,0,1,17,0,0,0,1,17,16,0,0,25,153,145,0,1,153,153,153,16,25,153,51,153,145,25,147,51,57,145,25,153,51,153,145,1,153,153,153,16,0,25,153,145,0,0,1,17,16,0};
 

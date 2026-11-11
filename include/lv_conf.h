@@ -6,7 +6,11 @@
 #define LV_CONF_H
 #define LV_COLOR_DEPTH 16
 #define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN
+#if defined(CYD32_HW_M5STACK_STOPWATCH)
+#define LV_MEM_SIZE (128U * 1024U)
+#else
 #define LV_MEM_SIZE (48U * 1024U)
+#endif
 #define LV_DEF_REFR_PERIOD 33
 #define LV_DPI_DEF 130
 #define LV_USE_OS LV_OS_NONE

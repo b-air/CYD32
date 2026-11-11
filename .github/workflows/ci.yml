@@ -71,8 +71,8 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
-      - run: pip install platformio==6.1.16 intelhex==2.3.0
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'requirements.txt') }}
+      - run: pip install --require-hashes -r requirements.txt
       - name: Build
         run: |
           set -o pipefail

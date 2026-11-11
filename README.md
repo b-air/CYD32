@@ -16,8 +16,8 @@ draws them on a naval-sonar UI and feeds a small creature that grows as it
 meets distinct radio sources. Four creatures (FENNI, LUMO, KRABBI, POULPI)
 hatch, idle and react; they grow with unique detections (24 h address dedup)
 and take on a Cthulhu form as they meet drones broadcasting Remote ID.
-On the StopWatch the v7 sprites are reused and upscaled with LVGL zoom (HD
-art comes later).
+On the StopWatch the v7 sprites are reused and upscaled with an integer
+nearest-neighbour blit at 3x (192 px) into a PSRAM buffer.
 
 ![screens](docs/screenshots/board.png)
 
@@ -32,9 +32,11 @@ art comes later).
   The only radio emission is the temporary update hotspot you start yourself.
 - MAC addresses are replaced by `SHA-256(random per-boot salt || MAC)`. The salt
   lives in RAM only, so IDs cannot be linked across reboots.
-- **Nothing is stored by default**: no flash or SD logging. Wardriving (phase 3)
-  will only export to the local microSD card on request, never upload. The
-  StopWatch has no microSD slot, so wardriving export is compiled out there.
+- **Nothing is stored by default**: no flash or SD logging. On CYD, wardriving
+  export (phase 3) will only write to the local microSD card on request, never
+  upload. The StopWatch has no microSD slot: wardriving there logs to a fixed
+  RAM table of salted IDs (cleared at reboot, oldest dropped when full), never
+  to flash, NVS or a network.
 - Remote ID (ASTM F3411) beacons over Wi-Fi and BLE are counted as drones.
 
 ## Status (phase 2 MVP)
@@ -47,8 +49,9 @@ art comes later).
 | Creature (4 lineages; sizes at 10/40/120/300 unique detections; Cthulhu at 1/3/6/10/15 drones) | done |
 | About screen (licence, version, commit, source) | done |
 | Signed OTA from an iPhone, A/B slots, rollback | done |
-| Trackers, drones (Remote ID decoding), wardriving | phase 3 (stub screens; no wardriving on StopWatch) |
-| M5Stack StopWatch target (round HUD, dual firmware) | done (provisional round layout; hardware untested) |
+| Trackers, drones (Remote ID decoding) | phase 3 (stub screens) |
+| Wardriving on StopWatch (RAM-only, salted IDs, cap 1024) | done (no GPS / no export; hardware untested) |
+| M5Stack StopWatch target (round HUD, dual firmware) | done (v8 round HUD; hardware untested) |
 
 ## Hardware notes
 
@@ -59,16 +62,18 @@ IRQ 36). Touch calibration is in `src/hw.cpp`.
 StopWatch (verified against the official M5Stack documentation): ESP32-S3R8,
 16 MB flash, 8 MB OPI PSRAM (`qio_opi`). CO5300 QSPI on G39 CS, G40 SCK,
 G38 TE, G41/G42/G46/G45 data; display reset on M5IOE1 PYG5. CST820B touch on
-G47 SDA, G48 SCL, G13 INT; touch reset on M5IOE1 PYG4. KEYA (yellow) is GPIO2,
-KEYB (blue) is GPIO1. There is no microSD. M5Unified and M5GFX drive the
-panel, touch and buttons; the 466x466 round HUD lives in `include/ui_layout_round.h`
-and can be swapped when a final mockup is ready. The CYD 320x240 layout stays
-in `include/ui_layout_cyd.h`.
+G47 SDA, G48 SCL, G13 INT; touch reset on M5IOE1 PYG4. KEYA (yellow) is GPIO2 and is BACK; KEYB (blue) is GPIO1 and is SELECT.
+The power button is not mapped (the PMIC handles on/off). There is no microSD.
+M5Unified and M5GFX drive the panel, touch and buttons. The native 466x466
+round HUD is in `src/ui_round.cpp` (metrics in `include/ui_layout_round.h`).
+Approved layout mockups (example data, not device captures) are in
+`docs/design/stopwatch-v8/`. The CYD 320x240 layout stays in
+`include/ui_layout_cyd.h` and `src/ui.cpp`.
 
 ## Build
 
 ```bash
-pip install platformio==6.1.16 intelhex==2.3.0
+pip install --require-hashes -r requirements.txt
 pio run -e cyd                      # .pio/build/cyd/firmware.bin
 pio run -e m5stack-stopwatch        # .pio/build/m5stack-stopwatch/firmware.bin
 ```
@@ -134,8 +139,10 @@ The About screen shows the status and the fingerprint of the verifying key
 
 - Test on real hardware: Wi-Fi `WIFI_MODE_NULL` + promiscuous capture, BLE/Wi-Fi
   time-slicing, touch calibration, OTA end to end with rollback. The StopWatch
-  target has not been run on a device yet (display colour endianness, KEYA
-  gesture, OTA, scanner).
+  target has not been run on a device yet (AMOLED colour endianness, circular
+  clip, CST820B touch including the r=213 safe circle, KEYA BACK / KEYB SELECT,
+  A+B long-press menu, KEYA unsigned-mode gesture, battery reading, creature
+  x3 blit, RAM-only wardriving, OTA, scanner).
 - Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
   `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
   arduino-esp32 3.x / ESP-IDF 5.

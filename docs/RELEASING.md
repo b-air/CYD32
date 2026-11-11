@@ -24,7 +24,7 @@ git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0
 
 The `release` workflow builds the **unsigned** images
 `firmware-cyd.bin` and `firmware-m5stack-stopwatch.bin`, plus each target's
-`bootloader-*.bin` and `partitions-*.bin`, shared `boot_app0.bin`,
+`bootloader-*.bin`, `partitions-*.bin` and `boot_app0-*.bin`,
 `SHA256SUMS`, an SPDX SBOM, the full source archive
 (`cyd32-<tag>-source.tar.gz`, AGPL section 6) and a build provenance
 attestation, and publishes a GitHub release. The job fails if the source
@@ -56,17 +56,18 @@ CYD offsets are unchanged (ESP32, bootloader at 0x1000):
 pip install esptool
 esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash \
   0x1000 bootloader-cyd.bin 0x8000 partitions-cyd.bin \
-  0xe000 boot_app0.bin 0x10000 firmware-cyd.bin
+  0xe000 boot_app0-cyd.bin 0x10000 firmware-cyd.bin
 ```
 
 StopWatch (ESP32-S3): the bootloader lives at 0x0, not 0x1000. First flash a
-merged image at 0x0:
+merged image at 0x0. `--flash_mode qio` matches the env's `qio_opi` memory
+type (QIO flash + OPI PSRAM); esptool's flash_mode flag does not take `qio_opi`:
 
 ```bash
 esptool.py --chip esp32s3 merge_bin -o firmware-m5stack-stopwatch-merged.bin \
-  --flash_mode dio --flash_size 16MB \
+  --flash_mode qio --flash_size 16MB \
   0x0 bootloader-m5stack-stopwatch.bin 0x8000 partitions-m5stack-stopwatch.bin \
-  0xe000 boot_app0.bin 0x10000 firmware-m5stack-stopwatch.bin
+  0xe000 boot_app0-m5stack-stopwatch.bin 0x10000 firmware-m5stack-stopwatch.bin
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
   0x0 firmware-m5stack-stopwatch-merged.bin
 ```
@@ -76,7 +77,7 @@ Or flash the pieces separately with the bootloader at 0x0:
 ```bash
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
   0x0 bootloader-m5stack-stopwatch.bin 0x8000 partitions-m5stack-stopwatch.bin \
-  0xe000 boot_app0.bin 0x10000 firmware-m5stack-stopwatch.bin
+  0xe000 boot_app0-m5stack-stopwatch.bin 0x10000 firmware-m5stack-stopwatch.bin
 ```
 
 Hold the power button until the green LED blinks to enter download mode

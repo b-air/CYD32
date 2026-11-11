@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
+#ifndef CYD32_HW_M5STACK_STOPWATCH
 #include "ui.h"
 #include <stdio.h>
 #include <string.h>
@@ -275,17 +276,27 @@ void i4Blit(uint8_t *dst, int x, int y, int w, int h, const uint8_t *packed, boo
     }
   }
 }
-void applyDelta(const uint8_t *d) {
+size_t deltaSlice(const cyd32_anim_t *a, uint16_t idx) {
+  if (!a || !a->off || !a->delta || a->n < 2 || idx >= (uint16_t)(a->n - 1)) return 0;
+  const uint32_t start = a->off[idx];
+  const uint32_t next = (idx + 1u < (uint16_t)(a->n - 1)) ? (uint32_t)a->off[idx + 1] : a->dlen;
+  if (next < start || start > a->dlen || next > a->dlen) return 0;
+  return (size_t)(next - start);
+}
+void applyDelta(const uint8_t *d, size_t cap) {
+  if (!d || cap < 3) return;
   const int8_t dx = (int8_t)d[0], dy = (int8_t)d[1];
   const uint8_t nrect = d[2];
   const uint8_t *p = d + 3;
+  const uint8_t *end = d + cap;
   i4Roll(i4Buf, dx, dy);
   for (uint8_t r = 0; r < nrect; r++) {
+    if (p + 4 > end) return;  // nrect overruns the frame slice
     const uint8_t x = p[0], y = p[1], w = p[2], h = p[3];
     p += 4;
-    const int nbytes = ((w + 1) / 2) * (int)h;
+    const size_t nbytes = (size_t)((w + 1) / 2) * (size_t)h;
+    if (p + nbytes > end) return;  // pixel payload overruns the frame slice
     // Reject rectangles that would address outside the 64x64 I4 buffer.
-    // nbytes still uses the declared w/h so the stream stays aligned.
     if (w == 0 || h == 0 || x >= kSpr || y >= kSpr ||
         (int)x + (int)w > kSpr || (int)y + (int)h > kSpr) {
       p += nbytes;
@@ -298,7 +309,7 @@ void applyDelta(const uint8_t *d) {
 void gotoFrame(const cyd32_anim_t *a, uint16_t i) {
   memcpy(i4Buf, a->key, kI4Size);
   if (i >= a->n) i = (uint16_t)(a->n ? a->n - 1 : 0);
-  for (uint16_t f = 1; f <= i; f++) applyDelta(a->delta + a->off[f - 1]);
+  for (uint16_t f = 1; f <= i; f++) applyDelta(a->delta + a->off[f - 1], deltaSlice(a, (uint16_t)(f - 1)));
   animFrame = i;
 }
 void blitTrait(uint8_t *dst, const cyd32_trait_t *tr, int frame, float scale) {
@@ -421,7 +432,7 @@ void animTick(lv_timer_t *t) {
   if (popping && popStart && nowMs - popStart >= kPopMs) { popping = 0; popStart = 0; }
   if (i4Buf && anim && curSpec && anim->ms && anim != curSpec->cth_keys) {
     if ((uint16_t)(animFrame + 1) < anim->n) {
-      applyDelta(anim->delta + anim->off[animFrame]);
+      applyDelta(anim->delta + anim->off[animFrame], deltaSlice(anim, animFrame));
       animFrame++;
     } else if (playingHatch || playingHappy) {
       startIdle();
@@ -689,3 +700,4 @@ void setBootProgress(int pct, const char *msg) {
   lv_label_set_text(bootMsg, msg);
 }
 }
+#endif

@@ -123,10 +123,17 @@ bool uploadAuthorized = false;
 bool lastUploadAuthorized = false;
 // Shared read window for marker scans (not used concurrently).
 uint8_t scanBuf[1024 + 64];
+// Bytes actually written to the OTA slot. For a signed image the last 96
+// received bytes are the trailer and were never emitted to flash.
+size_t writtenLen() {
+  size_t len = st.received < target->size ? st.received : target->size;
+  if (!pendingUnsigned && len >= ota_sig::kTrailer) len -= ota_sig::kTrailer;
+  return len;
+}
 // Searches the freshly written slot for the fw_version marker.
 bool findMarker(fw_version::Marker &out) {
   const size_t ml = sizeof(fw_version::Marker);
-  const size_t len = st.received < target->size ? st.received : target->size;
+  const size_t len = writtenLen();
   for (size_t off = 0; off < len; off += 1024) {
     const size_t n = (off + sizeof scanBuf <= target->size) ? sizeof scanBuf : target->size - off;
     if (esp_partition_read(target, off, scanBuf, n) != ESP_OK) return false;
@@ -141,7 +148,7 @@ bool findTarget(char *out, size_t cap) {
   const char *pfx = fw_version::kTargetPrefix;
   const size_t pl = sizeof(fw_version::kTargetPrefix) - 1;  // 14, excludes NUL
   const size_t win = 1024 + pl + 32;
-  const size_t len = st.received < target->size ? st.received : target->size;
+  const size_t len = writtenLen();
   out[0] = 0;
   for (size_t off = 0; off < len; off += 1024) {
     const size_t want = (off + win <= target->size) ? win : target->size - off;

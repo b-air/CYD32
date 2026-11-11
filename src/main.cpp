@@ -13,14 +13,24 @@
 #include "scanner.h"
 #include "ui.h"
 #include "ui_layout.h"
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+#include "wardriving.h"
+#include <esp_heap_caps.h>
+#endif
 
 // Keep the new image in PENDING_VERIFY until our own self-test passes, so the
 // bootloader rolls back to the previous slot if this firmware cannot start.
 extern "C" bool verifyRollbackLater() { return true; }
 
 namespace {
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+constexpr int kBufLines = 233;  // half-height; allocated from PSRAM
+static uint8_t *drawBuf = nullptr;
+static size_t drawBufSz = 0;
+#else
 constexpr int kBufLines = 24;
 uint8_t drawBuf[CYD32_SCREEN_W * kBufLines * 2];
+#endif
 bool otaMode = false, unsignedArmed = false, selfTestDone = false;
 uint32_t bootMs = 0, lastRefresh = 0;
 
@@ -60,11 +70,21 @@ void setup() {
   creature::begin();
   fw_status::begin();
   hw::begin();
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+  wardriving::begin();
+  drawBufSz = (size_t)CYD32_SCREEN_W * kBufLines * 2;
+  drawBuf = (uint8_t *)heap_caps_malloc(drawBufSz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!drawBuf) drawBuf = (uint8_t *)malloc(drawBufSz);
+#endif
   lv_init();
   lv_tick_set_cb(tick);
   lv_display_t *disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H);
   lv_display_set_flush_cb(disp, flushCb);
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+  lv_display_set_buffers(disp, drawBuf, nullptr, drawBufSz, LV_DISPLAY_RENDER_MODE_PARTIAL);
+#else
   lv_display_set_buffers(disp, drawBuf, nullptr, sizeof drawBuf, LV_DISPLAY_RENDER_MODE_PARTIAL);
+#endif
   lv_indev_t *in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, touchCb);
@@ -99,6 +119,9 @@ void loop() {
     ota_portal::loop();
   } else {
     scanner::loop();
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+    wardriving::loop();
+#endif
     if (ui::takeUpdateRequest()) {
       scanner::stop();
       ota_portal::start(unsignedArmed);

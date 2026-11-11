@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: "3.12"
-      - run: pip install platformio==6.1.16 intelhex==2.3.0
+      - run: pip install --require-hashes -r requirements.txt
       - name: Build (official)
         env:
           CYD32_OFFICIAL: "1"
@@ -48,10 +48,10 @@ jobs:
             cp "$b/firmware.bin" "dist/firmware-${env}.bin"
             cp "$b/bootloader.bin" "dist/bootloader-${env}.bin"
             cp "$b/partitions.bin" "dist/partitions-${env}.bin"
+            ba=$(python3 scripts/find-boot-app0.py "$env")
+            test -s "$ba" || { echo "::error::boot_app0.bin not found for $env"; exit 1; }
+            cp "$ba" "dist/boot_app0-${env}.bin"
           done
-          ba=$(find "$HOME/.platformio/packages" -path '*framework-arduinoespressif32*/tools/partitions/boot_app0.bin' | head -n 1)
-          test -s "$ba" || { echo "::error::boot_app0.bin not found"; exit 1; }
-          cp "$ba" dist/boot_app0.bin
           # Complete corresponding source (AGPL-3.0 section 6): tracked files at the tag + resolved dependency lock.
           git archive --format=tar --prefix="cyd32-${TAG}/" -o "dist/cyd32-${TAG}-source.tar" "$GITHUB_SHA"
           mkdir -p "lock/cyd32-${TAG}"
