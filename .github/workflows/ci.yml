@@ -24,14 +24,14 @@ jobs:
     outputs:
       firmware: ${{ steps.f.outputs.firmware == 'true' || steps.f.outputs.full == 'true' || github.event_name != 'pull_request' }}
     steps:
-      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
-        with:
-          egress-policy: audit
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      # Only PRs have a base to diff against. Outside PRs the step is skipped and
+      # the `firmware` output above is forced to true (fail-safe: build everything).
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: f
+        if: github.event_name == 'pull_request'
         with:
           filters: |
             full:
@@ -55,9 +55,6 @@ jobs:
       contents: read
     timeout-minutes: 30
     steps:
-      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
-        with:
-          egress-policy: audit
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -86,9 +83,6 @@ jobs:
       contents: read
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
-        with:
-          egress-policy: audit
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -101,9 +95,6 @@ jobs:
       contents: read
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
-        with:
-          egress-policy: audit
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -124,9 +115,6 @@ jobs:
       contents: read
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f # v2.10.2
-        with:
-          egress-policy: audit
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -136,6 +124,7 @@ jobs:
           DENYLIST_B64: ${{ secrets.DENYLIST_B64 }}
           IS_MAIN: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ -z "$DENYLIST_B64" ]; then
             if [ "$IS_MAIN" = "true" ]; then echo "::error::DENYLIST_B64 secret is required on main"; exit 1; fi
@@ -144,8 +133,8 @@ jobs:
           umask 077
           list="$RUNNER_TEMP/dl.txt"
           printf '%s' "$DENYLIST_B64" | base64 -d > "$list"
-          # PRs: commits of the PR. Pushes to main / manual runs: the FULL history (authors, committers, messages).
-          if [ -n "$BASE_SHA" ]; then export DENYLIST_GIT_RANGE="$BASE_SHA..HEAD"; else export DENYLIST_GIT_RANGE="HEAD"; fi
+          # PRs: the PR's own commits (head SHA, not GitHub's synthetic merge commit). Pushes to main / manual runs: the FULL history (authors, committers, messages).
+          if [ -n "$BASE_SHA" ]; then export DENYLIST_GIT_RANGE="$BASE_SHA..$HEAD_SHA"; else export DENYLIST_GIT_RANGE="HEAD"; fi
           rc=0; scripts/denylist-check.sh "$list" || rc=$?
           rm -f "$list"
           exit $rc

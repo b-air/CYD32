@@ -1,21 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
-// Tamagotchi creature: evolves with the number of distinct drones (Remote ID)
-// seen since boot, using cyd32_evo_threshold {0,1,5,12,20}. State is RAM only.
+// Tamagotchi creature: one of four lineages, grown from unique detections
+// (24 h address dedup) and Cthulhu stages from unique Remote ID drones.
+// Traits unlock on the first sighting of each source type, gated by size.
+// State is RAM only.
 #pragma once
 #include <stdint.h>
-#include "lvgl.h"
-#include "cyd32_sprites.h"
+#include "cyd32_creature.h"
 namespace creature {
-void begin();                    // picks a random lineage for this boot
-void update(uint32_t dronesEver, uint32_t wifi, uint32_t ble);
-uint8_t stage();
+void begin();  // picks a random lineage for this boot
+void update(uint16_t unique24h, uint16_t drones24h, uint8_t seenTraits);
+uint8_t size();             // 1..5
+uint8_t cthulhuStage();     // 0 = not transformed, 1..5
+uint8_t unlockedTraits();   // bitmask, same order as cyd32_trait_t[8]
+uint8_t consumeNewTraits(); // bits that newly unlocked since last call
+bool consumeGrew();         // true once after a size increase
+bool consumeCthulhuUp();    // true once after a Cthulhu stage increase
+bool consumeHatched();      // true if hatch should play (first size-1 showing)
+const char *name();
+const cyd32_creature_t *spec();
+uint32_t uniqueCount();
+uint32_t droneCount();
 uint32_t xp();
 void addXp(uint32_t v);
-const char *name();
-const lv_image_dsc_t *sprite();
-const cyd32_anim_t *anim(uint8_t stage);  // idle/reaction patches + evolution masks
-bool consumeEvolved();           // true once after a stage change
-uint32_t threshold(uint8_t stage);   // drones needed for a stage, 0 past the last stage
-constexpr uint8_t kStages = 5;
+uint32_t nextSizeAt();      // unique detections needed for the next size, 0 at max
+uint32_t sizeFloor();       // unique detections that unlocked the current size
 }

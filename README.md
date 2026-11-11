@@ -5,10 +5,10 @@
 Educational, **passive (receive-only)** radio "sonar" firmware for the
 ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046 touch, 4 MB flash).
 It listens to Wi-Fi management frames and Bluetooth Low Energy advertisements,
-draws them on a naval-sonar UI and feeds a small creature that evolves as it
-"meets" drones broadcasting Remote ID. The creature has idle and reaction
-animations (it reacts to a new drone or a PET/FEED tap) and plays an evolution
-sequence when it reaches a new stage.
+draws them on a naval-sonar UI and feeds a small creature that grows as it
+meets distinct radio sources. Four creatures (FENNI, LUMO, KRABBI, POULPI)
+hatch, idle and react; they grow with unique detections (24 h address dedup)
+and take on a Cthulhu form as they meet drones broadcasting Remote ID.
 
 ![screens](docs/screenshots/board.png)
 
@@ -34,7 +34,7 @@ sequence when it reaches a new stage.
 | Boot, display, touch, tab bar | done |
 | Sonar, grid (+ easter egg A1-B2-C3-D4), details | done |
 | Passive Wi-Fi mgmt + BLE scan, hashed IDs | done |
-| Creature (5 lineages, stages at 0/1/5/12/20 drones) | done |
+| Creature (4 lineages; sizes at 10/40/120/300 unique detections; Cthulhu at 1/3/6/10/15 drones) | done |
 | About screen (licence, version, commit, source) | done |
 | Signed OTA from an iPhone, A/B slots, rollback | done |
 | Trackers, drones (Remote ID decoding), wardriving | phase 3 (stub screens) |
