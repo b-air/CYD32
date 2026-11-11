@@ -13,10 +13,11 @@
 #include "fw_status.h"
 #include "ota_portal.h"
 #include "privacy.h"
+#include "ui_layout.h"
 
 namespace {
 lv_color_t C(uint16_t v) { return lv_color_make(((v >> 11) & 0x1f) << 3, ((v >> 5) & 0x3f) << 2, (v & 0x1f) << 3); }
-constexpr int kTop = 18, kTabY = 200, kContentH = kTabY - kTop;
+constexpr int kTop = CYD32_HEADER_H, kTabY = CYD32_TAB_Y, kContentH = CYD32_CONTENT_H;
 
 lv_obj_t *scr, *header, *headerLbl, *statusLbl, *banner, *content, *tabbar;
 ui::Screen cur = ui::BOOT;
@@ -68,20 +69,24 @@ void buildChrome() {
   lv_obj_clean(scr);
   lv_obj_set_style_bg_color(scr, C(CYD32_COL_BG), 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-  header = box(scr, 0, 0, 320, kTop, CYD32_COL_GRID);
+#if defined(CYD32_HW_M5STACK_STOPWATCH)
+  lv_obj_set_style_radius(scr, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_clip_corner(scr, true, 0);
+#endif
+  header = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_GRID);
   headerLbl = label(header, "", &lv_font_unscii_8, CYD32_COL_AMBER);
   lv_obj_align(headerLbl, LV_ALIGN_LEFT_MID, 4, 0);
   statusLbl = label(header, "", &lv_font_unscii_8, CYD32_COL_CYAN);
   lv_obj_align(statusLbl, LV_ALIGN_RIGHT_MID, -4, 0);
-  banner = box(scr, 0, 0, 320, kTop, CYD32_COL_HIT);
+  banner = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_HIT);
   lv_obj_t *bl = label(banner, "UNSIGNED FIRMWARE MODE", &lv_font_unscii_8, CYD32_COL_WHITE);
   lv_obj_center(bl);
   lv_obj_add_flag(banner, LV_OBJ_FLAG_HIDDEN);
-  content = box(scr, 0, kTop, 320, kContentH, CYD32_COL_BG);
-  tabbar = box(scr, 0, kTabY, 320, 40, CYD32_COL_PANEL);
+  content = box(scr, CYD32_CONTENT_X, CYD32_CONTENT_Y, CYD32_CONTENT_W, CYD32_CONTENT_H, CYD32_COL_BG);
+  tabbar = box(scr, CYD32_TAB_X, CYD32_TAB_Y, CYD32_TAB_W, CYD32_TAB_H, CYD32_COL_PANEL);
   const char *tabs[4] = {"SONAR", "GRID", "CREA", "MENU"};
   const ui::Screen ts[4] = {ui::SONAR, ui::GRID, ui::CREATURE, ui::MENU};
-  for (int i = 0; i < 4; i++) button(tabbar, tabs[i], i * 80, 0, 80, 40, onShow, (void *)(intptr_t)ts[i]);
+  for (int i = 0; i < 4; i++) button(tabbar, tabs[i], i * CYD32_TAB_BTN_W, 0, CYD32_TAB_BTN_W, CYD32_TAB_H, onShow, (void *)(intptr_t)ts[i]);
 }
 
 void buildBoot() {
@@ -95,14 +100,14 @@ void buildBoot() {
   lv_obj_set_style_bg_color(bootBar, C(CYD32_COL_CYAN), LV_PART_INDICATOR);
   bootMsg = label(content, "", &lv_font_unscii_8, CYD32_COL_OK);
   lv_obj_align(bootMsg, LV_ALIGN_TOP_MID, 0, 115);
-  lv_obj_t *h = label(content, "Hold BOOT 3 s: unsigned update", &lv_font_unscii_8, CYD32_COL_WATER);
+  lv_obj_t *h = label(content, CYD32_HOLD_HINT, &lv_font_unscii_8, CYD32_COL_WATER);
   lv_obj_align(h, LV_ALIGN_BOTTOM_MID, 0, -6);
 }
 
 uint32_t mix(uint32_t x) { x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; return x; }
 
 void buildSonar() {
-  const int d = 176, cx = 160, cy = kContentH / 2;
+  const int d = 176, cx = CYD32_CONTENT_W / 2, cy = kContentH / 2;
   for (int r = 1; r <= 3; r++) {
     lv_obj_t *c = box(content, cx - d * r / 6, cy - d * r / 6, d * r / 3, d * r / 3, CYD32_COL_BG);
     lv_obj_set_style_bg_opa(c, r == 3 ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
@@ -126,7 +131,7 @@ void buildSonar() {
   lv_obj_set_pos(sonarCnt, 4, 4);
 }
 void refreshSonar() {
-  const int cx = 160, cy = kContentH / 2, R = 86;
+  const int cx = CYD32_CONTENT_W / 2, cy = kContentH / 2, R = 86;
   sweepPts[0] = {cx, cy};
   sweepPts[1] = {(lv_value_precise_t)(cx + R * cosf(sweepAngle)), (lv_value_precise_t)(cy + R * sinf(sweepAngle))};
   lv_line_set_points(sweep, sweepPts, 2);
@@ -278,7 +283,14 @@ void applyDelta(const uint8_t *d) {
   for (uint8_t r = 0; r < nrect; r++) {
     const uint8_t x = p[0], y = p[1], w = p[2], h = p[3];
     p += 4;
-    const int nbytes = ((w + 1) / 2) * h;
+    const int nbytes = ((w + 1) / 2) * (int)h;
+    // Reject rectangles that would address outside the 64x64 I4 buffer.
+    // nbytes still uses the declared w/h so the stream stays aligned.
+    if (w == 0 || h == 0 || x >= kSpr || y >= kSpr ||
+        (int)x + (int)w > kSpr || (int)y + (int)h > kSpr) {
+      p += nbytes;
+      continue;
+    }
     i4Blit(i4Buf, x, y, w, h, p, false);
     p += nbytes;
   }
@@ -364,7 +376,10 @@ void compose() {
   rgbDsc.data = rgbBuf;
   lv_image_cache_drop(&rgbDsc);
   lv_image_set_src(creaImg, &rgbDsc);
-  const uint16_t z = currentZoom();
+  uint16_t z = currentZoom();
+#if CYD32_CREATURE_ZOOM != 256
+  z = (uint16_t)((uint32_t)z * (uint32_t)CYD32_CREATURE_ZOOM / 256u);
+#endif
   uint16_t zy = z;
   const bool idle = anim && !playingHappy && !playingHatch &&
                     (anim == curSpec->baby_idle || anim == curSpec->adult_idle ||
@@ -448,7 +463,7 @@ void buildCreature() {
   lv_obj_set_style_bg_color(creaBar, C(CYD32_COL_CYAN), LV_PART_INDICATOR);
   button(content, "PET", 176, 120, 62, 32, creaAction, (void *)1, CYD32_COL_CYAN);
   button(content, "FEED", 244, 120, 62, 32, creaAction, (void *)2, CYD32_COL_CYAN);
-  flash = box(content, 0, 0, 320, kContentH, CYD32_COL_WHITE);
+  flash = box(content, 0, 0, CYD32_CONTENT_W, kContentH, CYD32_COL_WHITE);
   lv_obj_add_flag(flash, LV_OBJ_FLAG_HIDDEN);
   lastUniques = creature::uniqueCount();
   growFrom = growTo = currentZoom();
@@ -491,10 +506,19 @@ void refreshCreature() {
 }
 
 void buildMenu() {
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+  // No microSD on the StopWatch: wardriving export is compiled out.
+  struct { const char *t; ui::Screen s; } items[5] = {
+      {"Details", ui::DETAILS}, {"Trackers", ui::TRACKERS}, {"Drones", ui::DRONES},
+      {"Update", ui::UPDATE_CONFIRM}, {"About", ui::ABOUT}};
+  const int n = 5;
+#else
   struct { const char *t; ui::Screen s; } items[6] = {
       {"Details", ui::DETAILS}, {"Trackers", ui::TRACKERS}, {"Drones", ui::DRONES},
       {"Wardriving", ui::WARDRIVING}, {"Update", ui::UPDATE_CONFIRM}, {"About", ui::ABOUT}};
-  for (int i = 0; i < 6; i++)
+  const int n = 6;
+#endif
+  for (int i = 0; i < n; i++)
     button(content, items[i].t, 10 + (i % 2) * 155, 8 + (i / 2) * 58, 145, 48, onShow, (void *)(intptr_t)items[i].s);
 }
 void buildDetails() {
@@ -554,7 +578,7 @@ void refreshOta() {
   const ota_portal::State &st = ota_portal::state();
   const bool ask = st.phase == ota_portal::AWAIT_CONFIRM;
   if (ask && !otaConfirm) {
-    otaConfirm = box(content, 0, 0, 320, 240 - kTop, CYD32_COL_BG);
+    otaConfirm = box(content, 0, 0, CYD32_CONTENT_W, CYD32_SCREEN_H - CYD32_HEADER_Y - CYD32_HEADER_H, CYD32_COL_BG);
     lv_obj_t *t = label(otaConfirm, "DOWNGRADE", &lv_font_montserrat_24, CYD32_COL_HIT);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_t *m = label(otaConfirm, st.msg, &lv_font_unscii_8, CYD32_COL_WHITE);
@@ -578,9 +602,9 @@ void refreshOta() {
 void buildAbout() {
   char t[400];
   snprintf(t, sizeof t,
-           "CYD32 - passive RF sonar (receive only)\n\nVersion  %s\nCommit   %s\nLicence  %s\nStatus   %s\nKey      %s\n\nSource code:\n%s\n\n"
+           "CYD32 - passive RF sonar (receive only)\n\nVersion  %s\nCommit   %s\nLicence  %s\nTarget   %s\nStatus   %s\nKey      %s\n\nSource code:\n%s\n\n"
            "ABSOLUTELY NO WARRANTY. Free software:\nredistribute it under the AGPL-3.0;\nget the source at the URL above.",
-           CYD32_VERSION, CYD32_COMMIT, CYD32_LICENSE, fw_status::kindStr(), fw_status::keyFingerprint(), CYD32_SOURCE_URL);
+           CYD32_VERSION, CYD32_COMMIT, CYD32_LICENSE, CYD32_TARGET, fw_status::kindStr(), fw_status::keyFingerprint(), CYD32_SOURCE_URL);
   label(content, t, &lv_font_unscii_8, CYD32_COL_WHITE);
 }
 void buildTorpedo() {
@@ -598,7 +622,7 @@ void buildTorpedo() {
 }
 void onUnsigned(lv_event_t *e) { unsignedDecision = (int)(intptr_t)lv_event_get_user_data(e); }
 void buildUnsignedConfirm() {
-  lv_obj_t *s = label(content, "BOOT button held.\n\nArm UNSIGNED update mode?\nThe next update may install firmware\nwhose origin cannot be verified.\nValid for ONE update, this boot only.", &lv_font_unscii_8, CYD32_COL_WHITE);
+  lv_obj_t *s = label(content, CYD32_UNSIGNED_BODY, &lv_font_unscii_8, CYD32_COL_WHITE);
   lv_obj_set_pos(s, 8, 8);
   button(content, "Cancel", 10, 120, 140, 44, onUnsigned, (void *)0, CYD32_COL_OK);
   button(content, "Arm unsigned", 170, 120, 140, 44, onUnsigned, (void *)1, CYD32_COL_HIT);
@@ -623,7 +647,7 @@ void show(Screen s) {
   cur = s;
   const bool tabs = s != BOOT && s != OTA && s != UNSIGNED_CONFIRM;
   if (tabs) lv_obj_remove_flag(tabbar, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(tabbar, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_height(content, tabs ? kContentH : 240 - kTop);
+  lv_obj_set_height(content, tabs ? kContentH : CYD32_SCREEN_H - CYD32_HEADER_Y - CYD32_HEADER_H);
   switch (s) {
     case BOOT: buildBoot(); break;
     case SONAR: buildSonar(); break;
@@ -633,7 +657,9 @@ void show(Screen s) {
     case DETAILS: buildDetails(); break;
     case TRACKERS: buildStub("TRACKERS", "Passive detection of BLE item trackers (AirTag, SmartTag, Tile) seen following you over time."); break;
     case DRONES: buildStub("DRONES", "Remote ID beacons (ASTM F3411, Wi-Fi and BLE) are already counted on the sonar. Phase 3 decodes position and operator fields."); break;
+#ifndef CYD32_HW_M5STACK_STOPWATCH
     case WARDRIVING: buildStub("WARDRIVING", "On request only: export to the local microSD card, hashed MACs, never uploaded anywhere."); break;
+#endif
     case UPDATE_CONFIRM: buildUpdateConfirm(); break;
     case OTA: buildOta(); break;
     case ABOUT: buildAbout(); break;

@@ -47,13 +47,17 @@ jobs:
               - "lib/**"
               - "scripts/**"
 
-  build:
+  build-matrix:
     needs: changes
     if: ${{ !github.event.pull_request.draft && needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [cyd, m5stack-stopwatch]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -67,13 +71,25 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
-      - run: pip install platformio==6.1.16
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio==6.1.16 intelhex==2.3.0
       - name: Build
         run: |
           set -o pipefail
-          pio run -e cyd | tee build.log
-          { echo '```'; grep -E 'RAM:|Flash:' build.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          pio run -e ${{ matrix.env }} | tee build.log
+          { echo '```'; echo '${{ matrix.env }}'; grep -E 'RAM:|Flash:' build.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # Required check name stays "build" so the ruleset keeps working with the matrix.
+  build:
+    needs: [changes, build-matrix]
+    if: ${{ always() && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.firmware == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 2
+    steps:
+      - name: Require every firmware target
+        run: test "${{ needs.build-matrix.result }}" = "success"
 
   guard:
     needs: changes

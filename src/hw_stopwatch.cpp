@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2026 CYD32 contributors
+// M5Stack StopWatch Dev Kit (SKU C152, ESP32-S3R8). Pins verified against
+// https://docs.m5stack.com/en/core/StopWatch (KEYA=GPIO2, KEYB=GPIO1,
+// CO5300 QSPI, CST820B on G47/G48/G13). Display reset and touch reset are
+// on the M5IOE1 expander and are handled by M5Unified / M5GFX.
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+#include "hw.h"
+#include <Arduino.h>
+#include <M5Unified.h>
+
+namespace hw {
+void begin() {
+  auto cfg = M5.config();
+  cfg.serial_baudrate = 115200;
+  M5.begin(cfg);
+  M5.Display.setRotation(0);  // native round 466x466
+  M5.Display.setBrightness(200);
+  M5.Display.fillScreen(0x0000);
+}
+bool touch(int16_t &x, int16_t &y) {
+  M5.update();
+  const auto t = M5.Touch.getDetail();
+  if (t.isPressed()) { x = (int16_t)t.x; y = (int16_t)t.y; return true; }
+  return false;
+}
+void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
+  M5.Display.pushImage(x, y, w, h, reinterpret_cast<const uint16_t *>(px));
+}
+bool bootButtonPressed() {
+  M5.update();
+  return M5.BtnA.isPressed();  // KEYA (yellow), GPIO2, active low
+}
+}  // namespace hw
+#endif

@@ -12,6 +12,10 @@ struct Marker {
 };
 constexpr char kMagic[17] = "CYD32-VERSION-01";
 extern const Marker running;
+// Target marker stored as the C string "CYD32-TARGET:<env>" (PIO environment
+// name). It lives in the app image, so the signed trailer covers it.
+constexpr char kTargetPrefix[] = "CYD32-TARGET:";
+extern const char running_target[];
 // Parses "v1.2.3..." / "1.2.3..."; missing parts are 0.
 void parse(const char *s, uint16_t &ma, uint16_t &mi, uint16_t &pa);
 // <0 if a<b, 0 if equal, >0 if a>b

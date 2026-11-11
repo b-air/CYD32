@@ -12,6 +12,7 @@
 #include "privacy.h"
 #include "scanner.h"
 #include "ui.h"
+#include "ui_layout.h"
 
 // Keep the new image in PENDING_VERIFY until our own self-test passes, so the
 // bootloader rolls back to the previous slot if this firmware cannot start.
@@ -19,7 +20,7 @@ extern "C" bool verifyRollbackLater() { return true; }
 
 namespace {
 constexpr int kBufLines = 24;
-uint8_t drawBuf[320 * kBufLines * 2];
+uint8_t drawBuf[CYD32_SCREEN_W * kBufLines * 2];
 bool otaMode = false, unsignedArmed = false, selfTestDone = false;
 uint32_t bootMs = 0, lastRefresh = 0;
 
@@ -61,7 +62,7 @@ void setup() {
   hw::begin();
   lv_init();
   lv_tick_set_cb(tick);
-  lv_display_t *disp = lv_display_create(320, 240);
+  lv_display_t *disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H);
   lv_display_set_flush_cb(disp, flushCb);
   lv_display_set_buffers(disp, drawBuf, nullptr, sizeof drawBuf, LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_indev_t *in = lv_indev_create();
@@ -69,8 +70,9 @@ void setup() {
   lv_indev_set_read_cb(in, touchCb);
   ui::begin();
 
-  // Physical gesture for the one-shot unsigned mode: hold BOOT during the 3 s splash
-  // (pressing BOOT *before* reset enters the ROM USB bootloader instead).
+  // Physical gesture for the one-shot unsigned mode: hold the board button
+  // (BOOT / GPIO0 on CYD, KEYA / GPIO2 on StopWatch) during the 3 s splash.
+  // On CYD, pressing BOOT *before* reset enters the ROM USB bootloader instead.
   uint32_t held = 0;
   for (int i = 0; i <= 30; i++) {
     ui::setBootProgress(i * 100 / 30, i < 10 ? "BLE OK" : i < 20 ? "WIFI OK" : "RID OK");
