@@ -21,7 +21,11 @@ for f in "${files[@]}"; do
 done
 # commit metadata of the checked range (author/committer/message), if requested
 if [[ -n "${DENYLIST_GIT_RANGE:-}" ]]; then
-  if git log --format='%an%n%ae%n%cn%n%ce%n%B' "$DENYLIST_GIT_RANGE" | grep -qiF -f <(grep -v '^\s*$' "$list"); then bad+=("(commit metadata in $DENYLIST_GIT_RANGE)"); fi
+  if ! meta=$(git log --format='%an%n%ae%n%cn%n%ce%n%B' "$DENYLIST_GIT_RANGE"); then
+    echo "denylist: git log failed for range ${DENYLIST_GIT_RANGE}" >&2
+    exit 2
+  fi
+  if printf '%s\n' "$meta" | grep -qiF -f <(grep -v '^\s*$' "$list"); then bad+=("(commit metadata in $DENYLIST_GIT_RANGE)"); fi
 fi
 if (( ${#bad[@]} )); then
   echo "denylist: ${#bad[@]} hit(s) in:"; printf '  %s\n' "${bad[@]}"; exit 1

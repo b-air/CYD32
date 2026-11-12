@@ -29,6 +29,10 @@ Third-party components (linked at build time, not vendored)
 LVGL 9.2.2              MIT              LICENSES/MIT-LVGL.txt
 LovyanGFX 1.2.0         FreeBSD (BSD-2-Clause) with Adafruit BSD and
                         TFT_eSPI-derived notices   LICENSES/LovyanGFX-FreeBSD.txt
+M5Unified 0.2.29        MIT              LICENSES/MIT-M5Unified.txt
+                        (m5stack-stopwatch environment only)
+M5GFX 0.2.35            MIT              LICENSES/MIT-M5GFX.txt
+                        (m5stack-stopwatch environment only)
 NimBLE-Arduino 1.4.3    Apache-2.0       LICENSES/NimBLE-Arduino-Apache-2.0.txt
 arduino-esp32 2.0.17    LGPL-2.1-or-later LICENSES/LGPL-2.1-or-later.txt
 ESP-IDF 4.4 (incl. mbedTLS)  Apache-2.0  LICENSES/Apache-2.0.txt

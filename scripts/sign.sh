@@ -4,7 +4,16 @@
 # Sign a firmware image locally by appending the 96-byte CYD32 trailer
 # (format: include/ota_sig.h). The device verifies it before switching slots.
 #   scripts/sign.sh firmware.bin [signed.bin] [slot]
+# Use the same key slot for every target (firmware-cyd.bin and
+# firmware-m5stack-stopwatch.bin). The signature covers the whole file,
+# including the embedded CYD32-TARGET:<env> marker.
 # Default key: ~/.config/cyd32/keys/ota_priv_<slot>.pem (override with CYD32_SIGN_KEY).
+#
+# First USB flash (see docs/RELEASING.md):
+#   CYD (ESP32): bootloader at 0x1000, partitions 0x8000, boot_app0 0xe000,
+#                app 0x10000.
+#   StopWatch (ESP32-S3): flash a merged image at 0x0, or the same pieces
+#                with the bootloader at 0x0 (not 0x1000).
 set -euo pipefail
 in="${1:?usage: sign.sh firmware.bin [out.bin] [slot]}"
 out="${2:-${in%.bin}-signed.bin}"

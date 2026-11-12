@@ -10,7 +10,7 @@ const uint8_t lumo_hatch_delta[5243] = {0,1,12,32,0,1,1,48,22,21,4,3,0,1,0,20,1,
 
 const uint16_t lumo_hatch_off[14] = {0,234,545,850,888,1252,1680,2047,2602,3291,3929,4142,4561,4925};
 
-const cyd32_anim_t lumo_hatch = {lumo_hatch_pal,lumo_hatch_key,lumo_hatch_delta,lumo_hatch_off,15,90};
+const cyd32_anim_t lumo_hatch = {lumo_hatch_pal,lumo_hatch_key,lumo_hatch_delta,lumo_hatch_off,15,90,sizeof lumo_hatch_delta};
 
 const uint32_t lumo_baby_idle_pal[16] = {0,4279766048,4284108896,4289241264,4293453040,4278251775,4291342480,4293976256,4294965480,4294507768,4294473888,4294483968,4291870975,4286193728,4289237224,4284502176};
 
@@ -20,7 +20,7 @@ const uint8_t lumo_baby_idle_delta[3260] = {0,0,5,24,38,4,2,15,255,255,111,16,40
 
 const uint16_t lumo_baby_idle_off[11] = {0,331,626,929,1257,1544,1861,2197,2445,2772,3079};
 
-const cyd32_anim_t lumo_baby_idle = {lumo_baby_idle_pal,lumo_baby_idle_key,lumo_baby_idle_delta,lumo_baby_idle_off,12,80};
+const cyd32_anim_t lumo_baby_idle = {lumo_baby_idle_pal,lumo_baby_idle_key,lumo_baby_idle_delta,lumo_baby_idle_off,12,80,sizeof lumo_baby_idle_delta};
 
 const uint32_t lumo_baby_happy_pal[16] = {0,4279766048,4284108896,4289241264,4293453040,4278251775,4291342480,4293976256,4294965480,4294507768,4294473888,4294483968,4291870975,4286193728,4289237224,4284502176};
 
@@ -30,7 +30,7 @@ const uint8_t lumo_baby_happy_delta[4371] = {254,1,5,24,39,2,1,0,34,39,3,1,0,0,1
 
 const uint16_t lumo_baby_happy_off[11] = {0,404,775,1286,1683,2044,2372,2781,3284,3691,4079};
 
-const cyd32_anim_t lumo_baby_happy = {lumo_baby_happy_pal,lumo_baby_happy_key,lumo_baby_happy_delta,lumo_baby_happy_off,12,55};
+const cyd32_anim_t lumo_baby_happy = {lumo_baby_happy_pal,lumo_baby_happy_key,lumo_baby_happy_delta,lumo_baby_happy_off,12,55,sizeof lumo_baby_happy_delta};
 
 const uint32_t lumo_adult_idle_pal[16] = {0,4279766048,4284108896,4289241264,4293453040,4278251775,4291342480,4293976256,4294965480,4294507768,4294473888,4294483968,4291870975,4286193728,4289237224,4284502176};
 
@@ -40,7 +40,7 @@ const uint8_t lumo_adult_idle_delta[9197] = {0,1,9,18,21,8,3,0,15,240,0,0,246,11
 
 const uint16_t lumo_adult_idle_off[11] = {0,968,1917,2743,3483,4278,5130,6062,6889,7682,8402};
 
-const cyd32_anim_t lumo_adult_idle = {lumo_adult_idle_pal,lumo_adult_idle_key,lumo_adult_idle_delta,lumo_adult_idle_off,12,80};
+const cyd32_anim_t lumo_adult_idle = {lumo_adult_idle_pal,lumo_adult_idle_key,lumo_adult_idle_delta,lumo_adult_idle_off,12,80,sizeof lumo_adult_idle_delta};
 
 const uint32_t lumo_adult_happy_pal[16] = {0,4279766048,4284108896,4289241264,4293453040,4278251775,4291342480,4293976256,4294965480,4294507768,4294473888,4294483968,4291870975,4286193728,4289237224,4284502176};
 
@@ -50,7 +50,7 @@ const uint8_t lumo_adult_happy_delta[11363] = {255,2,8,20,22,4,2,0,0,0,0,40,22,4
 
 const uint16_t lumo_adult_happy_off[11] = {0,1107,2069,3326,4300,5256,6165,7134,8410,9449,10499};
 
-const cyd32_anim_t lumo_adult_happy = {lumo_adult_happy_pal,lumo_adult_happy_key,lumo_adult_happy_delta,lumo_adult_happy_off,12,55};
+const cyd32_anim_t lumo_adult_happy = {lumo_adult_happy_pal,lumo_adult_happy_key,lumo_adult_happy_delta,lumo_adult_happy_off,12,55,sizeof lumo_adult_happy_delta};
 
 const uint32_t lumo_cth_keys_pal[16] = {0,4278519050,4279505448,4280426554,4282005076,4294959226,4291342480,4293976256,4284108912,4294965472,4293443648,4287262784,4291870975,4294963360,4289237224,4280951872};
 
@@ -60,7 +60,7 @@ const uint8_t lumo_cth_keys_delta[4741] = {0,0,8,20,28,5,1,47,255,32,40,28,1,1,3
 
 const uint16_t lumo_cth_keys_off[9] = {0,550,1264,2100,2956,3668,3873,4317,4563};
 
-const cyd32_anim_t lumo_cth_keys = {lumo_cth_keys_pal,lumo_cth_keys_key,lumo_cth_keys_delta,lumo_cth_keys_off,10,0};
+const cyd32_anim_t lumo_cth_keys = {lumo_cth_keys_pal,lumo_cth_keys_key,lumo_cth_keys_delta,lumo_cth_keys_off,10,0,sizeof lumo_cth_keys_delta};
 
 const uint32_t lumo_cth_idle_pal[16] = {0,4278519050,4279505448,4280426554,4282005076,4294959226,4291342480,4293976256,4284108912,4294965472,4293443648,4287262784,4291870975,4294963360,4289237224,4280951872};
 
@@ -70,7 +70,7 @@ const uint8_t lumo_cth_idle_delta[3191] = {0,0,13,6,18,6,6,0,0,0,0,0,0,0,176,0,0
 
 const uint16_t lumo_cth_idle_off[5] = {0,864,1196,2044,2824};
 
-const cyd32_anim_t lumo_cth_idle = {lumo_cth_idle_pal,lumo_cth_idle_key,lumo_cth_idle_delta,lumo_cth_idle_off,6,120};
+const cyd32_anim_t lumo_cth_idle = {lumo_cth_idle_pal,lumo_cth_idle_key,lumo_cth_idle_delta,lumo_cth_idle_off,6,120,sizeof lumo_cth_idle_delta};
 
 const uint8_t lumo_trait_0_px[60] = {0,17,16,0,0,0,17,16,0,0,0,1,17,0,0,0,1,17,16,0,0,25,153,145,0,1,153,153,153,16,1,153,204,153,16,25,153,204,153,145,1,153,204,153,16,1,153,153,153,16,0,25,153,145,0,0,1,17,16,0};
 

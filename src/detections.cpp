@@ -45,6 +45,7 @@ void rememberLocked(uint32_t id, uint32_t now, bool drone) {
   const int existing = findUniqueLocked(id);
   if (existing >= 0) {
     if (drone) uniq[existing].flags |= kFlagDrone;
+    uniq[existing].born = now;  // sliding 24 h window while the device stays visible
     return;
   }
   int slot;
@@ -83,8 +84,8 @@ void report(Kind k, const uint8_t mac[6], int8_t rssi, uint8_t ch, uint8_t trait
   if (slot < 0) {
     slot = used < kMax ? used++ : oldest;
     table[slot].id = id; table[slot].kind = k;
-    rememberLocked(id, now, k == DRONE);
   }
+  rememberLocked(id, now, k == DRONE);
   table[slot].rssi = rssi; table[slot].channel = ch; table[slot].lastSeen = now;
   portEXIT_CRITICAL(&mux);
 }

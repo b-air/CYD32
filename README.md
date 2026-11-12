@@ -2,13 +2,22 @@
 <!-- SPDX-FileCopyrightText: 2026 CYD32 contributors -->
 # CYD32
 
-Educational, **passive (receive-only)** radio "sonar" firmware for the
-ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046 touch, 4 MB flash).
+Educational, **passive (receive-only)** radio "sonar" firmware. Two board
+targets are built from this repository (signed firmware images for both are
+coming soon):
+
+- `cyd` — ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046
+  touch, 4 MB flash).
+- `m5stack-stopwatch` — M5Stack StopWatch Dev Kit, SKU C152 (ESP32-S3R8,
+  16 MB flash, 8 MB OPI PSRAM, 466x466 round CO5300 AMOLED, CST820B touch).
+
 It listens to Wi-Fi management frames and Bluetooth Low Energy advertisements,
 draws them on a naval-sonar UI and feeds a small creature that grows as it
 meets distinct radio sources. Four creatures (FENNI, LUMO, KRABBI, POULPI)
 hatch, idle and react; they grow with unique detections (24 h address dedup)
 and take on a Cthulhu form as they meet drones broadcasting Remote ID.
+On the StopWatch the v7 sprites are reused and upscaled with an integer
+nearest-neighbour blit at 3x (192 px) into a PSRAM buffer.
 
 ![screens](docs/screenshots/board.png)
 
@@ -23,8 +32,11 @@ and take on a Cthulhu form as they meet drones broadcasting Remote ID.
   The only radio emission is the temporary update hotspot you start yourself.
 - MAC addresses are replaced by `SHA-256(random per-boot salt || MAC)`. The salt
   lives in RAM only, so IDs cannot be linked across reboots.
-- **Nothing is stored by default**: no flash or SD logging. Wardriving (phase 3)
-  will only export to the local microSD card on request, never upload.
+- **Nothing is stored by default**: no flash or SD logging. On CYD, wardriving
+  export (phase 3) will only write to the local microSD card on request, never
+  upload. The StopWatch has no microSD slot: wardriving there logs to a fixed
+  RAM table of salted IDs (cleared at reboot, oldest dropped when full), never
+  to flash, NVS or a network.
 - Remote ID (ASTM F3411) beacons over Wi-Fi and BLE are counted as drones.
 
 ## Status (phase 2 MVP)
@@ -37,19 +49,33 @@ and take on a Cthulhu form as they meet drones broadcasting Remote ID.
 | Creature (4 lineages; sizes at 10/40/120/300 unique detections; Cthulhu at 1/3/6/10/15 drones) | done |
 | About screen (licence, version, commit, source) | done |
 | Signed OTA from an iPhone, A/B slots, rollback | done |
-| Trackers, drones (Remote ID decoding), wardriving | phase 3 (stub screens) |
+| Trackers, drones (Remote ID decoding) | phase 3 (stub screens) |
+| Wardriving on StopWatch (RAM-only, salted IDs, cap 1024) | done (no GPS / no export; hardware untested) |
+| M5Stack StopWatch target (round HUD, dual firmware) | done (v8 round HUD; hardware untested) |
 
 ## Hardware notes
 
-Pin map (single-USB ESP32-2432S028): TFT on HSPI (SCK 14, MOSI 13, MISO 12,
+CYD, pin map (single-USB ESP32-2432S028): TFT on HSPI (SCK 14, MOSI 13, MISO 12,
 CS 15, DC 2, BL 21), touch on its own SPI (SCK 25, MOSI 32, MISO 39, CS 33,
 IRQ 36). Touch calibration is in `src/hw.cpp`.
+
+StopWatch (verified against the official M5Stack documentation): ESP32-S3R8,
+16 MB flash, 8 MB OPI PSRAM (`qio_opi`). CO5300 QSPI on G39 CS, G40 SCK,
+G38 TE, G41/G42/G46/G45 data; display reset on M5IOE1 PYG5. CST820B touch on
+G47 SDA, G48 SCL, G13 INT; touch reset on M5IOE1 PYG4. KEYA (yellow) is GPIO2 and is BACK; KEYB (blue) is GPIO1 and is SELECT.
+The power button is not mapped (the PMIC handles on/off). There is no microSD.
+M5Unified and M5GFX drive the panel, touch and buttons. The native 466x466
+round HUD is in `src/ui_round.cpp` (metrics in `include/ui_layout_round.h`).
+Approved layout mockups (example data, not device captures) are in
+`docs/design/stopwatch-v8/`. The CYD 320x240 layout stays in
+`include/ui_layout_cyd.h` and `src/ui.cpp`.
 
 ## Build
 
 ```bash
-pip install platformio==6.1.16
-pio run -e cyd                      # firmware: .pio/build/cyd/firmware.bin
+pip install --require-hashes -r requirements.txt
+pio run -e cyd                      # .pio/build/cyd/firmware.bin
+pio run -e m5stack-stopwatch        # .pio/build/m5stack-stopwatch/firmware.bin
 ```
 
 Versions are pinned in `platformio.ini`. Build-time options (environment
@@ -62,10 +88,13 @@ default `keys/ota_pub_0.pem` and `keys/ota_pub_1.pem`), `CYD32_SOURCE_URL`,
 The first install must be done over USB from a computer:
 
 ```bash
-pio run -e cyd -t upload            # builds and flashes bootloader, partitions and app
+pio run -e cyd -t upload                       # CYD
+pio run -e m5stack-stopwatch -t upload         # StopWatch (first flash at 0x0)
 ```
 
-or with esptool and a release `.bin` (see `docs/RELEASING.md`). Browser
+or with esptool and a release `.bin` (see `docs/RELEASING.md`). On the
+ESP32-S3 the bootloader is flashed at 0x0 (or flash a merged image at 0x0);
+CYD offsets are unchanged (bootloader at 0x1000). Browser
 flashers need Web Serial (Chrome or Edge on a computer); iOS has no Web Serial.
 USB flashing always remains possible: CYD32 burns **no eFuse**, and uses no
 Secure Boot and no flash encryption.
@@ -85,9 +114,11 @@ Secure Boot and no flash encryption.
 The portal shows licence, version, commit and source URL; it never exposes scan data.
 It only answers requests whose `Host` is `192.168.4.1`, and uploads must carry a
 random per-session token embedded in the page (CSRF protection). Uploads larger
-than the OTA slot are rejected. If the uploaded firmware is older than the running
-one (or carries no version marker), it is not activated until you confirm the
-DOWNGRADE on the touchscreen.
+than the OTA slot are rejected. A file built for the other board (the image
+embeds `CYD32-TARGET:<env>`) is rejected before the boot slot is switched,
+with a message on the device and on the portal. If the uploaded firmware is
+older than the running one (or carries no version marker), it is not activated
+until you confirm the DOWNGRADE on the touchscreen.
 
 ### Firmware status: Official / Fork / Unsigned
 
@@ -96,9 +127,10 @@ DOWNGRADE on the touchscreen.
 - **Fork**: built by anyone else with their own key (`scripts/gen-key.sh`).
   Forks set `CYD32_OTA_PUBKEY` to their own public key.
 - **Unsigned**: installed through the one-shot unsigned mode. To arm it, hold
-  the BOOT button for 3 s **during the boot splash** (not before reset, which
-  enters the USB bootloader), then confirm on the touchscreen. It accepts one
-  unsigned update during that boot only and shows a persistent red banner.
+  the board button for 3 s **during the boot splash** (BOOT / GPIO0 on CYD,
+  not before reset, which enters the USB bootloader; KEYA / GPIO2 on
+  StopWatch), then confirm on the touchscreen. It accepts one unsigned update
+  during that boot only and shows a persistent red banner.
 
 The About screen shows the status and the fingerprint of the verifying key
 (first 16 hex digits of SHA-256 of the raw public key). Two key slots allow key rotation.
@@ -106,7 +138,11 @@ The About screen shows the status and the fingerprint of the verifying key
 ## Known TODOs
 
 - Test on real hardware: Wi-Fi `WIFI_MODE_NULL` + promiscuous capture, BLE/Wi-Fi
-  time-slicing, touch calibration, OTA end to end with rollback.
+  time-slicing, touch calibration, OTA end to end with rollback. The StopWatch
+  target has not been run on a device yet (AMOLED colour endianness, circular
+  clip, CST820B touch including the r=213 safe circle, KEYA BACK / KEYB SELECT,
+  A+B long-press menu, KEYA unsigned-mode gesture, battery reading, creature
+  x3 blit, RAM-only wardriving, OTA, scanner).
 - Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
   `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
   arduino-esp32 3.x / ESP-IDF 5.

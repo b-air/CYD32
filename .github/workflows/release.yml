@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: "3.12"
-      - run: pip install platformio==6.1.16
+      - run: pip install --require-hashes -r requirements.txt
       - name: Build (official)
         env:
           CYD32_OFFICIAL: "1"
@@ -35,20 +35,33 @@ jobs:
           CYD32_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           if [ ! -s keys/ota_pub_0.pem ]; then echo "::error::keys/ota_pub_0.pem is required for an official release"; exit 1; fi
-          pio run -e cyd
-          pio pkg list -e cyd > dist-deps.txt
+          pio run -e cyd -e m5stack-stopwatch
+          pio pkg list -e cyd > dist-deps-cyd.txt
+          pio pkg list -e m5stack-stopwatch > dist-deps-m5stack-stopwatch.txt
       - name: Assemble assets
         env:
           TAG: ${{ github.ref_name }}
         run: |
           mkdir -p dist
-          b=.pio/build/cyd
-          cp "$b/firmware.bin" "$b/bootloader.bin" "$b/partitions.bin" dist/
-          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin dist/
+          for env in cyd m5stack-stopwatch; do
+            b=".pio/build/$env"
+            cp "$b/firmware.bin" "dist/firmware-${env}.bin"
+            cp "$b/bootloader.bin" "dist/bootloader-${env}.bin"
+            cp "$b/partitions.bin" "dist/partitions-${env}.bin"
+            ba=$(python3 scripts/find-boot-app0.py "$env")
+            test -s "$ba" || { echo "::error::boot_app0.bin not found for $env"; exit 1; }
+            cp "$ba" "dist/boot_app0-${env}.bin"
+          done
           # Complete corresponding source (AGPL-3.0 section 6): tracked files at the tag + resolved dependency lock.
           git archive --format=tar --prefix="cyd32-${TAG}/" -o "dist/cyd32-${TAG}-source.tar" "$GITHUB_SHA"
-          mkdir -p "lock/cyd32-${TAG}" && cp dist-deps.txt "lock/cyd32-${TAG}/dependencies.lock.txt"
-          tar -rf "dist/cyd32-${TAG}-source.tar" -C lock "cyd32-${TAG}/dependencies.lock.txt"
+          mkdir -p "lock/cyd32-${TAG}"
+          cp dist-deps-cyd.txt "lock/cyd32-${TAG}/dependencies.lock.txt"
+          cp dist-deps-cyd.txt "lock/cyd32-${TAG}/dependencies-cyd.lock.txt"
+          cp dist-deps-m5stack-stopwatch.txt "lock/cyd32-${TAG}/dependencies-m5stack-stopwatch.lock.txt"
+          tar -rf "dist/cyd32-${TAG}-source.tar" -C lock \
+            "cyd32-${TAG}/dependencies.lock.txt" \
+            "cyd32-${TAG}/dependencies-cyd.lock.txt" \
+            "cyd32-${TAG}/dependencies-m5stack-stopwatch.lock.txt"
           gzip -9n "dist/cyd32-${TAG}-source.tar"
       - name: SBOM
         uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
@@ -66,9 +79,11 @@ jobs:
         run: |
           src="dist/cyd32-${TAG}-source.tar.gz"
           test -s "$src" || { echo "::error::source archive missing"; exit 1; }
-          for f in platformio.ini partitions.csv src/main.cpp scripts/sign.sh LICENSE NOTICE dependencies.lock.txt; do
+          for f in platformio.ini partitions.csv partitions_stopwatch.csv src/main.cpp scripts/sign.sh LICENSE NOTICE dependencies.lock.txt dependencies-cyd.lock.txt dependencies-m5stack-stopwatch.lock.txt; do
             tar -tzf "$src" | grep -q "^cyd32-${TAG}/$f$" || { echo "::error::source archive lacks $f"; exit 1; }
           done
+          grep -q "firmware-cyd.bin" dist/SHA256SUMS
+          grep -q "firmware-m5stack-stopwatch.bin" dist/SHA256SUMS
           grep -q "cyd32-${TAG}-source.tar.gz" dist/SHA256SUMS
       - name: Build provenance
         if: github.event.repository.visibility == 'public'
@@ -81,4 +96,4 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --verify-tag \
-            --notes "Unsigned build artefacts. The maintainer signs firmware.bin locally and uploads firmware-signed.bin (see docs/RELEASING.md). Full corresponding source: cyd32-${TAG}-source.tar.gz."
+            --notes "Unsigned build artefacts. The maintainer signs firmware-cyd.bin and firmware-m5stack-stopwatch.bin locally and uploads the signed images (see docs/RELEASING.md). Full corresponding source: cyd32-${TAG}-source.tar.gz."

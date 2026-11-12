@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
+#ifndef CYD32_HW_M5STACK_STOPWATCH
 #include "hw.h"
 #include <Arduino.h>
 #define LGFX_USE_V1
@@ -57,3 +58,4 @@ void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
 }
 bool bootButtonPressed() { return digitalRead(0) == LOW; }
 }  // namespace hw
+#endif

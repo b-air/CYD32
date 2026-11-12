@@ -100,6 +100,8 @@ void handleRoot() {
   h += "<tr><td>Version</td><td>" + esc(CYD32_VERSION) + "</td></tr>";
   h += "<tr><td>Commit</td><td>" + esc(CYD32_COMMIT) + "</td></tr>";
   h += "<tr><td>Source</td><td><a href='" + esc(CYD32_SOURCE_URL) + "'>" + esc(CYD32_SOURCE_URL) + "</a></td></tr>";
+  // Reference running_target so --gc-sections keeps CYD32-TARGET:<env> in the image.
+  h += "<tr><td>Target</td><td>" + esc(fw_version::running_target + sizeof(fw_version::kTargetPrefix) - 1) + "</td></tr>";
   h += "<tr><td>Status</td><td>" + String(fw_status::kindStr()) + "</td></tr>";
   h += "<tr><td>Keys</td><td>" CYD32_KEY0_FPR " / " CYD32_KEY1_FPR "</td></tr></table>";
   if (st.phase == ota_portal::AWAIT_CONFIRM) h += "<p class=w>DOWNGRADE: confirm or cancel on the device screen.</p>";
@@ -119,16 +121,56 @@ uint32_t confirmStart = 0;
 bool uploadAuthorized = false;
 // Authorization result of the current request, read by handleUploadDone.
 bool lastUploadAuthorized = false;
+// Shared read window for marker scans (not used concurrently).
+uint8_t scanBuf[1024 + 64];
+// Bytes actually written to the OTA slot. For a signed image the last 96
+// received bytes are the trailer and were never emitted to flash.
+size_t writtenLen() {
+  size_t len = st.received < target->size ? st.received : target->size;
+  if (!pendingUnsigned && len >= ota_sig::kTrailer) len -= ota_sig::kTrailer;
+  return len;
+}
 // Searches the freshly written slot for the fw_version marker.
 bool findMarker(fw_version::Marker &out) {
-  static uint8_t buf[1024 + sizeof(fw_version::Marker)];
   const size_t ml = sizeof(fw_version::Marker);
-  const size_t len = st.received < target->size ? st.received : target->size;
+  const size_t len = writtenLen();
   for (size_t off = 0; off < len; off += 1024) {
-    const size_t n = (off + sizeof buf <= target->size) ? sizeof buf : target->size - off;
-    if (esp_partition_read(target, off, buf, n) != ESP_OK) return false;
+    const size_t n = (off + sizeof scanBuf <= target->size) ? sizeof scanBuf : target->size - off;
+    if (esp_partition_read(target, off, scanBuf, n) != ESP_OK) return false;
     for (size_t i = 0; i + ml <= n; i++)
-      if (buf[i] == 'C' && memcmp(buf + i, fw_version::kMagic, 16) == 0) { memcpy(&out, buf + i, ml); return true; }
+      if (scanBuf[i] == 'C' && memcmp(scanBuf + i, fw_version::kMagic, 16) == 0) { memcpy(&out, scanBuf + i, ml); return true; }
+  }
+  return false;
+}
+// The target marker is part of the signed image (CYD32-TARGET:<env>).
+bool findTarget(char *out, size_t cap) {
+  if (!target || !out || cap < 2) return false;
+  const char *pfx = fw_version::kTargetPrefix;
+  const size_t pl = sizeof(fw_version::kTargetPrefix) - 1;  // 14, excludes NUL
+  const size_t win = 1024 + pl + 32;
+  const size_t len = writtenLen();
+  out[0] = 0;
+  for (size_t off = 0; off < len; off += 1024) {
+    const size_t want = (off + win <= target->size) ? win : target->size - off;
+    const size_t n = want < sizeof scanBuf ? want : sizeof scanBuf;
+    if (n < pl) break;
+    if (esp_partition_read(target, off, scanBuf, n) != ESP_OK) return false;
+    for (size_t i = 0; i + pl < n; i++) {
+      if (scanBuf[i] != 'C' || memcmp(scanBuf + i, pfx, pl) != 0) continue;
+      size_t k = 0;
+      const uint8_t *s = scanBuf + i + pl;
+      const size_t maxn = n - (i + pl);
+      while (k < maxn && k + 1 < cap) {
+        const char c = (char)s[k];
+        if (c == 0) {
+          if (k > 0) { out[k] = 0; return true; }
+          break;  // prefix-only (the search needle itself); keep scanning
+        }
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-')) break;
+        out[k++] = c;
+      }
+    }
   }
   return false;
 }
@@ -189,6 +231,16 @@ void handleUploadChunk() {
     otaOpen = false;
     if (e != ESP_OK) { fail("invalid image (esp_ota_end)"); return; }
     pendingUnsigned = unsignedImage; pendingSlot = slot;
+    // Reject a binary built for another board before set_boot_partition.
+    // The marker is inside the signed payload (or the unsigned image itself).
+    char imgTarget[33] = {0};
+    if (!findTarget(imgTarget, sizeof imgTarget)) { fail("wrong board (no target marker)"); return; }
+    if (strcmp(imgTarget, CYD32_TARGET) != 0) {
+      char why[64];
+      snprintf(why, sizeof why, "wrong board (image is for %.20s)", imgTarget);
+      fail(why);
+      return;
+    }
     // Anti-downgrade: compare the version marker of the new image with ours.
     esp_app_desc_t desc;
     if (esp_ota_get_partition_description(target, &desc) != ESP_OK) { fail("no app descriptor"); return; }

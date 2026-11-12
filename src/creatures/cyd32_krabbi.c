@@ -10,7 +10,7 @@ const uint8_t krabbi_hatch_delta[3988] = {0,0,9,16,39,2,1,1,22,36,2,2,1,20,34,39
 
 const uint16_t krabbi_hatch_off[14] = {0,326,697,1020,1023,1434,1846,2195,2608,2911,3216,3271,3498,3765};
 
-const cyd32_anim_t krabbi_hatch = {krabbi_hatch_pal,krabbi_hatch_key,krabbi_hatch_delta,krabbi_hatch_off,15,90};
+const cyd32_anim_t krabbi_hatch = {krabbi_hatch_pal,krabbi_hatch_key,krabbi_hatch_delta,krabbi_hatch_off,15,90,sizeof krabbi_hatch_delta};
 
 const uint32_t krabbi_baby_idle_pal[16] = {0,4279766048,4283054672,4287264920,4292397280,4278251775,4290263080,4293941824,4294941312,4294507768,4294473888,4294483968,4294500512,4286193728,4292388944,4286193688};
 
@@ -20,7 +20,7 @@ const uint8_t krabbi_baby_idle_delta[1610] = {0,0,4,24,41,19,7,0,0,0,0,0,0,0,0,0
 
 const uint16_t krabbi_baby_idle_off[11] = {0,135,324,406,495,710,864,1101,1292,1402,1467};
 
-const cyd32_anim_t krabbi_baby_idle = {krabbi_baby_idle_pal,krabbi_baby_idle_key,krabbi_baby_idle_delta,krabbi_baby_idle_off,12,80};
+const cyd32_anim_t krabbi_baby_idle = {krabbi_baby_idle_pal,krabbi_baby_idle_key,krabbi_baby_idle_delta,krabbi_baby_idle_off,12,80,sizeof krabbi_baby_idle_delta};
 
 const uint32_t krabbi_baby_happy_pal[16] = {0,4279766048,4283054672,4287264920,4292397280,4278251775,4290263080,4293941824,4294941312,4294507768,4294473888,4294483968,4294500512,4286193728,4292388944,4286193688};
 
@@ -30,7 +30,7 @@ const uint8_t krabbi_baby_happy_delta[3039] = {0,2,3,26,46,10,2,153,153,31,241,1
 
 const uint16_t krabbi_baby_happy_off[11] = {0,265,523,830,1146,1421,1655,1958,2276,2523,2814};
 
-const cyd32_anim_t krabbi_baby_happy = {krabbi_baby_happy_pal,krabbi_baby_happy_key,krabbi_baby_happy_delta,krabbi_baby_happy_off,12,55};
+const cyd32_anim_t krabbi_baby_happy = {krabbi_baby_happy_pal,krabbi_baby_happy_key,krabbi_baby_happy_delta,krabbi_baby_happy_off,12,55,sizeof krabbi_baby_happy_delta};
 
 const uint32_t krabbi_adult_idle_pal[16] = {0,4279766048,4283054672,4287264920,4292397280,4278251775,4290263080,4293941824,4294941312,4294507768,4294473888,4294483968,4294500512,4286193728,4292388944,4286193688};
 
@@ -40,7 +40,7 @@ const uint8_t krabbi_adult_idle_delta[4369] = {0,0,12,20,27,23,5,0,0,0,0,0,0,0,0
 
 const uint16_t krabbi_adult_idle_off[11] = {0,411,915,1192,1457,1949,2430,3006,3445,3681,3923};
 
-const cyd32_anim_t krabbi_adult_idle = {krabbi_adult_idle_pal,krabbi_adult_idle_key,krabbi_adult_idle_delta,krabbi_adult_idle_off,12,80};
+const cyd32_anim_t krabbi_adult_idle = {krabbi_adult_idle_pal,krabbi_adult_idle_key,krabbi_adult_idle_delta,krabbi_adult_idle_off,12,80,sizeof krabbi_adult_idle_delta};
 
 const uint32_t krabbi_adult_happy_pal[16] = {0,4279766048,4283054672,4287264920,4292397280,4278251775,4290263080,4293941824,4294941312,4294507768,4294473888,4294483968,4294500512,4286193728,4292388944,4286193688};
 
@@ -50,7 +50,7 @@ const uint8_t krabbi_adult_happy_delta[8116] = {0,0,7,20,27,23,5,0,0,0,0,0,0,0,0
 
 const uint16_t krabbi_adult_happy_off[11] = {0,693,1309,2172,2978,3699,4360,5145,6041,6766,7511};
 
-const cyd32_anim_t krabbi_adult_happy = {krabbi_adult_happy_pal,krabbi_adult_happy_key,krabbi_adult_happy_delta,krabbi_adult_happy_off,12,55};
+const cyd32_anim_t krabbi_adult_happy = {krabbi_adult_happy_pal,krabbi_adult_happy_key,krabbi_adult_happy_delta,krabbi_adult_happy_off,12,55,sizeof krabbi_adult_happy_delta};
 
 const uint32_t krabbi_cth_keys_pal[16] = {0,4278453002,4279372320,4280946222,4283046468,4294916808,4279896602,4285147738,4293941824,4294961400,4294937312,4290263080,4294500512,4293459776,4292388944,4287240816};
 
@@ -60,7 +60,7 @@ const uint8_t krabbi_cth_keys_delta[3744] = {0,0,7,22,28,8,4,15,17,31,16,241,68,
 
 const uint16_t krabbi_cth_keys_off[9] = {0,418,967,1575,2232,2943,3031,3127,3401};
 
-const cyd32_anim_t krabbi_cth_keys = {krabbi_cth_keys_pal,krabbi_cth_keys_key,krabbi_cth_keys_delta,krabbi_cth_keys_off,10,0};
+const cyd32_anim_t krabbi_cth_keys = {krabbi_cth_keys_pal,krabbi_cth_keys_key,krabbi_cth_keys_delta,krabbi_cth_keys_off,10,0,sizeof krabbi_cth_keys_delta};
 
 const uint32_t krabbi_cth_idle_pal[16] = {0,4278453002,4279372320,4280946222,4283046468,4294916808,4279896602,4285147738,4293941824,4294961400,4294937312,4290263080,4294500512,4293459776,4292388944,4287240816};
 
@@ -70,7 +70,7 @@ const uint8_t krabbi_cth_idle_delta[1614] = {0,0,15,8,0,3,1,240,0,16,0,1,1,240,4
 
 const uint16_t krabbi_cth_idle_off[5] = {0,334,604,966,1345};
 
-const cyd32_anim_t krabbi_cth_idle = {krabbi_cth_idle_pal,krabbi_cth_idle_key,krabbi_cth_idle_delta,krabbi_cth_idle_off,6,120};
+const cyd32_anim_t krabbi_cth_idle = {krabbi_cth_idle_pal,krabbi_cth_idle_key,krabbi_cth_idle_delta,krabbi_cth_idle_off,6,120,sizeof krabbi_cth_idle_delta};
 
 const uint8_t krabbi_trait_0_px[36] = {0,0,0,0,0,0,0,0,0,17,16,0,1,153,145,0,25,149,153,16,25,85,89,16,25,149,153,16,1,153,145,0,0,17,16,0};
 

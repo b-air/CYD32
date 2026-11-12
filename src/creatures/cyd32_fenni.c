@@ -10,7 +10,7 @@ const uint8_t fenni_hatch_delta[5802] = {0,1,13,28,23,1,1,16,34,23,2,1,17,18,24,
 
 const uint16_t fenni_hatch_off[14] = {0,344,725,1073,1076,1613,2218,2704,3330,3815,4253,4438,4914,5417};
 
-const cyd32_anim_t fenni_hatch = {fenni_hatch_pal,fenni_hatch_key,fenni_hatch_delta,fenni_hatch_off,15,90};
+const cyd32_anim_t fenni_hatch = {fenni_hatch_pal,fenni_hatch_key,fenni_hatch_delta,fenni_hatch_off,15,90,sizeof fenni_hatch_delta};
 
 const uint32_t fenni_baby_idle_pal[16] = {0,4279766048,4285155888,4289759312,4293447832,4278251775,4291850320,4294482544,4294953120,4294507768,4294473888,4294483968,4294962392,4286193728,4294488256,4287248944};
 
@@ -20,7 +20,7 @@ const uint8_t fenni_baby_idle_delta[3537] = {0,0,6,20,34,9,6,0,0,0,0,0,0,0,255,0
 
 const uint16_t fenni_baby_idle_off[11] = {0,359,671,968,1309,1602,1911,2263,2563,2884,3224};
 
-const cyd32_anim_t fenni_baby_idle = {fenni_baby_idle_pal,fenni_baby_idle_key,fenni_baby_idle_delta,fenni_baby_idle_off,12,80};
+const cyd32_anim_t fenni_baby_idle = {fenni_baby_idle_pal,fenni_baby_idle_key,fenni_baby_idle_delta,fenni_baby_idle_off,12,80,sizeof fenni_baby_idle_delta};
 
 const uint32_t fenni_baby_happy_pal[16] = {0,4279766048,4285155888,4289759312,4293447832,4278251775,4291850320,4294482544,4294953120,4294507768,4294473888,4294483968,4294962392,4286193728,4294488256,4287248944};
 
@@ -30,7 +30,7 @@ const uint8_t fenni_baby_happy_delta[4163] = {0,2,6,26,0,11,1,0,0,0,0,0,0,22,36,
 
 const uint16_t fenni_baby_happy_off[11] = {0,393,724,1146,1558,1940,2277,2680,3077,3408,3818};
 
-const cyd32_anim_t fenni_baby_happy = {fenni_baby_happy_pal,fenni_baby_happy_key,fenni_baby_happy_delta,fenni_baby_happy_off,12,55};
+const cyd32_anim_t fenni_baby_happy = {fenni_baby_happy_pal,fenni_baby_happy_key,fenni_baby_happy_delta,fenni_baby_happy_off,12,55,sizeof fenni_baby_happy_delta};
 
 const uint32_t fenni_adult_idle_pal[16] = {0,4279766048,4285155888,4289759312,4293447832,4278251775,4291850320,4294482544,4294953120,4294507768,4294473888,4294483968,4294962392,4286193728,4294488256,4287248944};
 
@@ -40,7 +40,7 @@ const uint8_t fenni_adult_idle_delta[8124] = {0,0,14,18,13,5,3,0,0,0,0,0,0,255,2
 
 const uint16_t fenni_adult_idle_off[11] = {0,883,1655,2157,2713,3494,4297,5184,6004,6699,7373};
 
-const cyd32_anim_t fenni_adult_idle = {fenni_adult_idle_pal,fenni_adult_idle_key,fenni_adult_idle_delta,fenni_adult_idle_off,12,80};
+const cyd32_anim_t fenni_adult_idle = {fenni_adult_idle_pal,fenni_adult_idle_key,fenni_adult_idle_delta,fenni_adult_idle_off,12,80,sizeof fenni_adult_idle_delta};
 
 const uint32_t fenni_adult_happy_pal[16] = {0,4279766048,4285155888,4289759312,4293447832,4278251775,4291850320,4294482544,4294953120,4294507768,4294473888,4294483968,4294962392,4286193728,4294488256,4287248944};
 
@@ -50,7 +50,7 @@ const uint8_t fenni_adult_happy_delta[10831] = {0,0,11,18,13,5,3,0,0,0,0,0,0,0,0
 
 const uint16_t fenni_adult_happy_off[11] = {0,982,1841,2967,4062,5048,5946,6954,8089,8981,9964};
 
-const cyd32_anim_t fenni_adult_happy = {fenni_adult_happy_pal,fenni_adult_happy_key,fenni_adult_happy_delta,fenni_adult_happy_off,12,55};
+const cyd32_anim_t fenni_adult_happy = {fenni_adult_happy_pal,fenni_adult_happy_key,fenni_adult_happy_delta,fenni_adult_happy_off,12,55,sizeof fenni_adult_happy_delta};
 
 const uint32_t fenni_cth_keys_pal[16] = {0,4278846214,4280945170,4283044896,4285407280,4294924830,4281994776,4294482544,4287244858,4294961352,4294941242,4291850320,4294953120,4294955072,4294473888,4290261022};
 
@@ -60,7 +60,7 @@ const uint8_t fenni_cth_keys_delta[4661] = {0,0,7,16,16,9,5,0,247,55,240,0,0,247
 
 const uint16_t fenni_cth_keys_off[9] = {0,583,1432,2342,3264,4115,4200,4290,4482};
 
-const cyd32_anim_t fenni_cth_keys = {fenni_cth_keys_pal,fenni_cth_keys_key,fenni_cth_keys_delta,fenni_cth_keys_off,10,0};
+const cyd32_anim_t fenni_cth_keys = {fenni_cth_keys_pal,fenni_cth_keys_key,fenni_cth_keys_delta,fenni_cth_keys_off,10,0,sizeof fenni_cth_keys_delta};
 
 const uint32_t fenni_cth_idle_pal[16] = {0,4278846214,4280945170,4283044896,4285407280,4294924830,4281994776,4294482544,4287244858,4294961352,4294941242,4291850320,4294953120,4294955072,4294473888,4290261022};
 
@@ -70,7 +70,7 @@ const uint8_t fenni_cth_idle_delta[3323] = {0,0,15,16,12,7,4,65,240,0,0,65,1,0,0
 
 const uint16_t fenni_cth_idle_off[5] = {0,684,1401,2042,2689};
 
-const cyd32_anim_t fenni_cth_idle = {fenni_cth_idle_pal,fenni_cth_idle_key,fenni_cth_idle_delta,fenni_cth_idle_off,6,120};
+const cyd32_anim_t fenni_cth_idle = {fenni_cth_idle_pal,fenni_cth_idle_key,fenni_cth_idle_delta,fenni_cth_idle_off,6,120,sizeof fenni_cth_idle_delta};
 
 const uint8_t fenni_trait_0_px[28] = {0,17,16,0,1,187,177,0,27,187,187,16,27,187,187,16,27,187,187,16,1,177,177,0,0,17,16,0};
 

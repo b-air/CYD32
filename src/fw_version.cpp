@@ -22,4 +22,6 @@ int compare(const Marker &a, const Marker &b) {
 __attribute__((used)) const Marker running = {
     {'C', 'Y', 'D', '3', '2', '-', 'V', 'E', 'R', 'S', 'I', 'O', 'N', '-', '0', '1'},
     CYD32_VER_MAJOR, CYD32_VER_MINOR, CYD32_VER_PATCH, 0};
+// Searchable marker; the OTA path rejects an image whose env does not match.
+__attribute__((used)) const char running_target[] = "CYD32-TARGET:" CYD32_TARGET;
 }
