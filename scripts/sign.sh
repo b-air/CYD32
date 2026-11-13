@@ -12,8 +12,8 @@
 # First USB flash (see docs/RELEASING.md):
 #   CYD (ESP32): bootloader at 0x1000, partitions 0x8000, boot_app0 0xe000,
 #                app 0x10000.
-#   StopWatch (ESP32-S3): flash a merged image at 0x0, or the same pieces
-#                with the bootloader at 0x0 (not 0x1000).
+#   StopWatch (ESP32-S3): bootloader at 0x0 (not 0x1000), partitions 0x8000,
+#                boot_app0 0xe000, app 0x10000. There is no merged image.
 set -euo pipefail
 in="${1:?usage: sign.sh firmware.bin [out.bin] [slot]}"
 out="${2:-${in%.bin}-signed.bin}"
