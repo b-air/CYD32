@@ -4,7 +4,7 @@
 
 Educational, **passive (receive-only)** radio "sonar" firmware. Two board
 targets are built from this repository (signed firmware images for both are
-coming soon):
+published on the `v0.2.0-test1` pre-release and listed in its `SHA256SUMS`):
 
 - `cyd` — ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046
   touch, 4 MB flash).

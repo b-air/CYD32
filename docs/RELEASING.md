@@ -82,6 +82,7 @@ CYD (ESP32, bootloader at 0x1000):
 ```bash
 pip install esptool
 esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash \
+  --flash_mode dio --flash_size 4MB \
   0x1000 bootloader-cyd.bin 0x8000 partitions-cyd.bin \
   0xe000 boot_app0-cyd.bin 0x10000 firmware-cyd.bin
 ```
