@@ -89,12 +89,14 @@ The first install must be done over USB from a computer:
 
 ```bash
 pio run -e cyd -t upload                       # CYD
-pio run -e m5stack-stopwatch -t upload         # StopWatch (first flash at 0x0)
+pio run -e m5stack-stopwatch -t upload         # StopWatch (bootloader at 0x0)
 ```
 
-or with esptool and a release `.bin` (see `docs/RELEASING.md`). On the
-ESP32-S3 the bootloader is flashed at 0x0 (or flash a merged image at 0x0);
-CYD offsets are unchanged (bootloader at 0x1000). Browser
+or with esptool and the four release files for the board (bootloader,
+partitions, boot_app0, firmware; see `docs/RELEASING.md`). There is no merged
+image. The bootloader goes at 0x1000 on the CYD (ESP32) and at 0x0 on the
+StopWatch (ESP32-S3); on both, partitions go at 0x8000, boot_app0 at 0xe000 and
+the app at 0x10000. Browser
 flashers need Web Serial (Chrome or Edge on a computer); iOS has no Web Serial.
 USB flashing always remains possible: CYD32 burns **no eFuse**, and uses no
 Secure Boot and no flash encryption.

@@ -42,6 +42,16 @@ scripts/sign.sh dist/v0.2.0/firmware-m5stack-stopwatch.bin dist/v0.2.0/firmware-
 gh release upload v0.2.0 dist/v0.2.0/firmware-cyd-signed.bin dist/v0.2.0/firmware-m5stack-stopwatch-signed.bin
 ```
 
+The `SHA256SUMS` published by the workflow is generated before signing, so it
+does not list the `-signed.bin` files. After uploading them, regenerate it from
+every release asset and replace it:
+
+```bash
+gh release download v0.2.0 -D dist/v0.2.0-all
+cd dist/v0.2.0-all && rm SHA256SUMS && LC_ALL=C sha256sum * > SHA256SUMS && sha256sum -c --strict SHA256SUMS && cd -
+gh release upload v0.2.0 dist/v0.2.0-all/SHA256SUMS --clobber
+```
+
 A signed image is the unsigned `.bin` plus the 96-byte trailer (format in
 `include/ota_sig.h`). Use the signed file for OTA; the unsigned file is for
 USB. Sign both targets with the same slot-0 key. Each image embeds
@@ -50,7 +60,24 @@ before `set_boot_partition`.
 
 ## Flash a release over USB
 
-CYD offsets are unchanged (ESP32, bootloader at 0x1000):
+There is no merged image: each release ships four separate files per board
+(`bootloader-<env>.bin`, `partitions-<env>.bin`, `boot_app0-<env>.bin` and
+`firmware-<env>.bin`). Flash all four at these offsets:
+
+| File            | CYD (ESP32) | StopWatch (ESP32-S3) |
+|-----------------|-------------|----------------------|
+| bootloader      | 0x1000      | 0x0                  |
+| partitions      | 0x8000      | 0x8000               |
+| boot_app0       | 0xe000      | 0xe000               |
+| firmware (app)  | 0x10000     | 0x10000              |
+
+Both images are built in DIO flash mode (the mode byte in the image header).
+esptool keeps the header's mode by default; if you pass `--flash_mode`, use
+`dio`. The StopWatch env's `qio_opi` memory type does not change the flash
+mode written to the image, and esptool's `--flash_mode` flag does not take
+`qio_opi`.
+
+CYD (ESP32, bootloader at 0x1000):
 
 ```bash
 pip install esptool
@@ -59,23 +86,11 @@ esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash \
   0xe000 boot_app0-cyd.bin 0x10000 firmware-cyd.bin
 ```
 
-StopWatch (ESP32-S3): the bootloader lives at 0x0, not 0x1000. First flash a
-merged image at 0x0. `--flash_mode qio` matches the env's `qio_opi` memory
-type (QIO flash + OPI PSRAM); esptool's flash_mode flag does not take `qio_opi`:
-
-```bash
-esptool.py --chip esp32s3 merge_bin -o firmware-m5stack-stopwatch-merged.bin \
-  --flash_mode qio --flash_size 16MB \
-  0x0 bootloader-m5stack-stopwatch.bin 0x8000 partitions-m5stack-stopwatch.bin \
-  0xe000 boot_app0-m5stack-stopwatch.bin 0x10000 firmware-m5stack-stopwatch.bin
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
-  0x0 firmware-m5stack-stopwatch-merged.bin
-```
-
-Or flash the pieces separately with the bootloader at 0x0:
+StopWatch (ESP32-S3, bootloader at 0x0, not 0x1000):
 
 ```bash
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
+  --flash_mode dio --flash_size 16MB \
   0x0 bootloader-m5stack-stopwatch.bin 0x8000 partitions-m5stack-stopwatch.bin \
   0xe000 boot_app0-m5stack-stopwatch.bin 0x10000 firmware-m5stack-stopwatch.bin
 ```
