@@ -13,6 +13,8 @@
 #include "scanner.h"
 #include "ui.h"
 #include "ui_layout.h"
+#include "boot_log.h"
+#include "cyd32_build_gen.h"
 #ifdef CYD32_HW_M5STACK_STOPWATCH
 #include "wardriving.h"
 #include <esp_heap_caps.h>
@@ -29,7 +31,12 @@ static uint8_t *drawBuf = nullptr;
 static size_t drawBufSz = 0;
 #else
 constexpr int kBufLines = 24;
-uint8_t drawBuf[CYD32_SCREEN_W * kBufLines * 2];
+// LVGL 9 asserts that the draw buffer is LV_DRAW_BUF_ALIGN-aligned. A plain
+// uint8_t array has 1-byte alignment and was linked at an odd address in
+// v0.2.0-test1, so lv_display_set_buffers() halted in LVGL's default
+// while(1) assert handler: backlight on, black screen, no further output.
+alignas(LV_DRAW_BUF_ALIGN) uint8_t drawBuf[CYD32_SCREEN_W * kBufLines * 2];
+static_assert(LV_DRAW_BUF_ALIGN <= 16, "unexpected LVGL draw buffer alignment");
 #endif
 bool otaMode = false, unsignedArmed = false, selfTestDone = false;
 uint32_t bootMs = 0, lastRefresh = 0;
@@ -65,30 +72,38 @@ void selfTest() {
 void setup() {
   Serial.begin(115200);
   bootMs = millis();
-  privacy::begin();
-  det::begin();
-  creature::begin();
-  fw_status::begin();
-  hw::begin();
+  BOOT_LOG("CYD32 %s (%s) target=%s", CYD32_VERSION, CYD32_COMMIT, CYD32_TARGET);
+  BOOT_LOG("heap free=%u", (unsigned)ESP.getFreeHeap());
+  BOOT_STEP("privacy", privacy::begin());
+  BOOT_STEP("detections", det::begin());
+  BOOT_STEP("creature", creature::begin());
+  BOOT_STEP("fw_status", fw_status::begin());
+  BOOT_STEP("hw", hw::begin());
 #ifdef CYD32_HW_M5STACK_STOPWATCH
-  wardriving::begin();
+  BOOT_STEP("wardriving", wardriving::begin());
   drawBufSz = (size_t)CYD32_SCREEN_W * kBufLines * 2;
   drawBuf = (uint8_t *)heap_caps_malloc(drawBufSz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!drawBuf) drawBuf = (uint8_t *)malloc(drawBufSz);
-#endif
-  lv_init();
-  lv_tick_set_cb(tick);
-  lv_display_t *disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H);
-  lv_display_set_flush_cb(disp, flushCb);
-#ifdef CYD32_HW_M5STACK_STOPWATCH
-  lv_display_set_buffers(disp, drawBuf, nullptr, drawBufSz, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  const size_t bufSz = drawBufSz;
 #else
-  lv_display_set_buffers(disp, drawBuf, nullptr, sizeof drawBuf, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  const size_t bufSz = sizeof drawBuf;
 #endif
+  BOOT_LOG("draw buffer %p, %u bytes", (void *)drawBuf, (unsigned)bufSz);
+  if (!drawBuf || ((uintptr_t)drawBuf % LV_DRAW_BUF_ALIGN) != 0) {
+    BOOT_LOG("FATAL: draw buffer missing or not %d-byte aligned", LV_DRAW_BUF_ALIGN);
+  }
+  BOOT_STEP("lv_init", lv_init());
+  lv_tick_set_cb(tick);
+  lv_display_t *disp = nullptr;
+  BOOT_STEP("lv_display_create", disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H));
+  lv_display_set_flush_cb(disp, flushCb);
+  BOOT_STEP("lv_display_set_buffers",
+            lv_display_set_buffers(disp, drawBuf, nullptr, bufSz, LV_DISPLAY_RENDER_MODE_PARTIAL));
   lv_indev_t *in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, touchCb);
-  ui::begin();
+  BOOT_STEP("ui", ui::begin());
+  BOOT_STEP("first frame", pump(1));
 
   // Physical gesture for the one-shot unsigned mode: hold the board button
   // (BOOT / GPIO0 on CYD, KEYA / GPIO2 on StopWatch) during the 3 s splash.
@@ -108,8 +123,9 @@ void setup() {
     unsignedArmed = d == 1;  // RAM only: valid for this boot and one update
     ui::setUnsignedBanner(unsignedArmed);
   }
-  scanner::begin();
-  ui::show(ui::SONAR);
+  BOOT_STEP("scanner", scanner::begin());
+  BOOT_STEP("ui sonar", ui::show(ui::SONAR));
+  BOOT_LOG("setup done in %lu ms, heap free=%u", (unsigned long)(millis() - bootMs), (unsigned)ESP.getFreeHeap());
 }
 
 void loop() {

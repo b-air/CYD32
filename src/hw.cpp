@@ -3,6 +3,7 @@
 #ifndef CYD32_HW_M5STACK_STOPWATCH
 #include "hw.h"
 #include <Arduino.h>
+#include "boot_log.h"
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
@@ -43,10 +44,10 @@ LGFX_CYD tft;
 namespace hw {
 void begin() {
   pinMode(0, INPUT_PULLUP);
-  tft.init();
+  BOOT_STEP("tft.init (ILI9341 HSPI, XPT2046 VSPI)", tft.init());
   tft.setRotation(1);  // landscape 320x240
-  tft.setBrightness(200);
-  tft.fillScreen(0x0000);
+  BOOT_STEP("backlight", tft.setBrightness(200));
+  BOOT_STEP("fillScreen", tft.fillScreen(0x0000));
 }
 bool touch(int16_t &x, int16_t &y) {
   lgfx::touch_point_t tp;

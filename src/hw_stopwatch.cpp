@@ -9,15 +9,16 @@
 #include "ui_layout.h"
 #include <Arduino.h>
 #include <M5Unified.h>
+#include "boot_log.h"
 
 namespace hw {
 void begin() {
   auto cfg = M5.config();
   cfg.serial_baudrate = 115200;
-  M5.begin(cfg);
+  BOOT_STEP("M5.begin (CO5300, CST820B, PMIC)", M5.begin(cfg));
   M5.Display.setRotation(0);  // native round 466x466
-  M5.Display.setBrightness(200);
-  M5.Display.fillScreen(0x0000);
+  BOOT_STEP("brightness", M5.Display.setBrightness(200));
+  BOOT_STEP("fillScreen", M5.Display.fillScreen(0x0000));
 }
 bool touch(int16_t &x, int16_t &y) {
   M5.update();

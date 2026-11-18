@@ -20,7 +20,9 @@ void begin() {
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_app_desc_t d;
     uint8_t rec[32] = {0};
-    const bool have = p.getBytes("sha", rec, 32) == 32;
+    // isKey() first: on a fresh or USB-erased device the key is absent, and a
+    // bare getBytes() logs a harmless "nvs_get_blob len fail: sha NOT_FOUND".
+    const bool have = p.isKey("sha") && p.getBytes("sha", rec, 32) == 32;
     if (run && have && esp_ota_get_partition_description(run, &d) == ESP_OK &&
         p.getString("part", "") == run->label && sameSha(rec, d.app_elf_sha256)) {
       uns = p.getBool("unsigned", false);
