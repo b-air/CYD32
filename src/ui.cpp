@@ -16,6 +16,7 @@
 #include "ota_portal.h"
 #include "privacy.h"
 #include "ui_layout.h"
+#include "ui_radar.h"
 
 namespace {
 lv_color_t C(uint16_t v) { return lv_color_make(((v >> 11) & 0x1f) << 3, ((v >> 5) & 0x3f) << 2, (v & 0x1f) << 3); }
@@ -26,10 +27,16 @@ ui::Screen cur = ui::BOOT;
 bool updateReq = false, unsignedBanner = false;
 int unsignedDecision = -1;
 // per-screen widgets
-lv_obj_t *bootBar, *bootMsg;
-lv_obj_t *sweep, *blips[24], *sonarCnt;
-lv_point_precise_t sweepPts[2];
-float sweepAngle = 0;
+lv_obj_t *bootBar, *bootPct, *bootStat[3], *bootLogo, *bootTitle, *scanLine;
+lv_timer_t *fxTimer = nullptr;
+uint32_t fxNext = 0, fxEnd = 0;
+int16_t scanY = 0;
+// v9 phosphor sonar: BOOT and SONAR draw on a full-screen "stage" (child of the
+// screen, so the scope may overlap the header / tab rows). Deleted by show().
+lv_obj_t *stage = nullptr, *radarObj = nullptr;
+lv_obj_t *hudTgt, *hudDrn, *hudSel[3];
+lv_obj_t *hdr[7], *tabBtn[4];
+bool phosphor = false;
 lv_obj_t *gridMarks[80], *gridLog;
 lv_obj_t *creaImg, *creaInfo, *creaBar, *flash;
 lv_obj_t *detList;
@@ -65,15 +72,61 @@ lv_obj_t *button(lv_obj_t *p, const char *t, int x, int y, int w, int h, lv_even
   return b;
 }
 void onShow(lv_event_t *e) { ui::show((ui::Screen)(intptr_t)lv_event_get_user_data(e)); }
+// 5 px top-left chamfer on the phosphor tab buttons (cut in the bar colour,
+// idle buttons get a G2 diagonal to close the outline).
+void onTabChamfer(lv_event_t *e) {
+  if (!phosphor) return;
+  lv_obj_t *b = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
+  lv_layer_t *L = lv_event_get_layer(e);
+  lv_area_t a;
+  lv_obj_get_coords(b, &a);
+  const int k = CYD_BUTTON_CHAMFER;
+  lv_draw_triangle_dsc_t t;
+  lv_draw_triangle_dsc_init(&t);
+  t.bg_color = C(CYD32_SONAR_BG_CYD);
+  t.bg_opa = LV_OPA_COVER;
+  t.p[0].x = a.x1; t.p[0].y = a.y1;
+  t.p[1].x = a.x1 + k + 1; t.p[1].y = a.y1;
+  t.p[2].x = a.x1; t.p[2].y = a.y1 + k + 1;
+  lv_draw_triangle(L, &t);
+  if (lv_obj_get_style_border_width(b, 0)) {
+    lv_draw_line_dsc_t d;
+    lv_draw_line_dsc_init(&d);
+    d.color = C(CYD32_SONAR_G2);
+    d.width = 1;
+    d.p1.x = a.x1; d.p1.y = a.y1 + k;
+    d.p2.x = a.x1 + k; d.p2.y = a.y1;
+    lv_draw_line(L, &d);
+  }
+}
+lv_obj_t *stageLabel(const char *t, const lv_font_t *f, uint16_t col, lv_align_t al, int x, int y) {
+  lv_obj_t *l = label(stage, t, f, col);
+  lv_obj_align(l, al, x, y);
+  return l;
+}
+lv_obj_t *makeStage(int y, int h) {
+  stage = box(scr, 0, y, CYD32_SCREEN_W, h, CYD32_SONAR_BG_CYD);
+  lv_obj_set_style_bg_opa(stage, LV_OPA_TRANSP, 0);
+  return stage;
+}
 
 void buildChrome() {
   scr = lv_screen_active();
   lv_obj_clean(scr);
   lv_obj_set_style_bg_color(scr, C(CYD32_COL_BG), 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-  header = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_GRID);
-  headerLbl = label(header, "", &lv_font_unscii_8, CYD32_COL_AMBER);
-  lv_obj_align(headerLbl, LV_ALIGN_LEFT_MID, 4, 0);
+  // Header: G1 strip (y 0-16) with a G2 rule at y 17, on every screen.
+  header = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_PANEL);
+  lv_obj_set_style_border_side(header, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_border_color(header, C(CYD32_COL_GRID), 0);
+  lv_obj_set_style_border_width(header, 1, 0);
+  // "CYD32 W0143 B0389 R0002" as 7 labels (LVGL 9 has no inline recolor).
+  static const int16_t hx[7] = {4, 52, 60, 100, 108, 148, 156};
+  for (int i = 0; i < 7; i++) {
+    hdr[i] = label(header, i == 0 ? "CYD32" : i == 1 ? "W" : i == 3 ? "B" : i == 5 ? "R" : "", &lv_font_unscii_8, CYD32_COL_AMBER);
+    lv_obj_set_pos(hdr[i], hx[i], 4);
+  }
+  headerLbl = hdr[0];
   statusLbl = label(header, "", &lv_font_unscii_8, CYD32_COL_CYAN);
   lv_obj_align(statusLbl, LV_ALIGN_RIGHT_MID, -4, 0);
   banner = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_HIT);
@@ -84,75 +137,209 @@ void buildChrome() {
   tabbar = box(scr, CYD32_TAB_X, CYD32_TAB_Y, CYD32_TAB_W, CYD32_TAB_H, CYD32_COL_PANEL);
   const char *tabs[4] = {"SONAR", "GRID", "CREA", "MENU"};
   const ui::Screen ts[4] = {ui::SONAR, ui::GRID, ui::CREATURE, ui::MENU};
-  for (int i = 0; i < 4; i++) button(tabbar, tabs[i], i * CYD32_TAB_BTN_W, 0, CYD32_TAB_BTN_W, CYD32_TAB_H, onShow, (void *)(intptr_t)ts[i]);
+  for (int i = 0; i < 4; i++) {
+    tabBtn[i] = button(tabbar, tabs[i], i * CYD32_TAB_BTN_W, 0, CYD32_TAB_BTN_W, CYD32_TAB_H, onShow, (void *)(intptr_t)ts[i]);
+    lv_obj_add_event_cb(tabBtn[i], onTabChamfer, LV_EVENT_DRAW_POST, nullptr);
+  }
+}
+
+// Theme for the header and the tab buttons: v9 phosphor on the sonar screen,
+// Y3-d (yellow HUD, harmonised greens) everywhere else.
+void styleChrome() {
+  const int active = cur == ui::SONAR ? 0 : cur == ui::GRID ? 1 : cur == ui::CREATURE ? 2 : cur == ui::MENU ? 3 : -1;
+  lv_obj_set_style_bg_color(tabbar, C(phosphor ? CYD32_SONAR_BG_CYD : CYD32_COL_PANEL), 0);
+  for (int i = 0; i < 4; i++) {
+    lv_obj_t *b = tabBtn[i], *l = lv_obj_get_child(b, 0);
+    if (phosphor) {
+      const bool on = i == active;
+      lv_obj_set_pos(b, i * CYD_BUTTON_PITCH + 1, CYD_BUTTON_Y - CYD32_TAB_Y);
+      lv_obj_set_size(b, CYD_BUTTON_W, CYD_BUTTON_H);
+      lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G4 : CYD32_SONAR_BG_CYD), 0);
+      lv_obj_set_style_border_width(b, on ? 0 : 1, 0);
+      lv_obj_set_style_border_color(b, C(CYD32_SONAR_G2), 0);
+      lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G5 : CYD32_SONAR_G1), LV_STATE_PRESSED);
+      lv_obj_set_style_text_color(l, C(on ? CYD32_SONAR_BG_CYD : CYD32_SONAR_G4), 0);
+    } else {
+      lv_obj_set_pos(b, i * CYD32_TAB_BTN_W, 0);
+      lv_obj_set_size(b, CYD32_TAB_BTN_W, CYD32_TAB_H);
+      lv_obj_set_style_bg_color(b, C(CYD32_COL_PANEL), 0);
+      lv_obj_set_style_border_width(b, 1, 0);
+      lv_obj_set_style_border_color(b, C(CYD32_COL_AMBER), 0);
+      lv_obj_set_style_bg_color(b, C(CYD32_COL_GRID), LV_STATE_PRESSED);
+      lv_obj_set_style_text_color(l, C(CYD32_COL_AMBER), 0);
+    }
+    lv_obj_center(l);
+  }
+  lv_obj_set_style_text_color(statusLbl, C(phosphor ? CYD32_SONAR_G3 : CYD32_COL_CYAN), 0);
+}
+
+// --- v9 phosphor boot --------------------------------------------------------
+// V3 effect, kept cheap: a 1 px scanline that walks down the screen (two rows
+// invalidated per frame) and, every 1.5-3 s, a 100 ms burst that slides the
+// logo and the title 2-3 px in opposite directions.
+uint32_t mix(uint32_t x) { x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; return x; }
+void fxTick(lv_timer_t *) {
+  const uint32_t now = lv_tick_get();
+  if (scanLine) {
+    scanY = (int16_t)((scanY + 3) % CYD32_SCREEN_H);
+    lv_obj_set_y(scanLine, scanY);
+  }
+  if (!bootLogo || !bootTitle) return;
+  if (fxEnd && now >= fxEnd) {
+    fxEnd = 0;
+    lv_obj_set_x(bootLogo, (CYD32_SCREEN_W - img_cyd32_logo_cyd.header.w) / 2);
+    lv_obj_set_x(bootTitle, (CYD32_SCREEN_W - img_cyd32_title_cyd.header.w) / 2);
+    if (scanLine) lv_obj_set_style_bg_color(scanLine, C(CYD32_SONAR_G3), 0);
+  } else if (!fxEnd && now >= fxNext) {
+    const uint32_t r = mix(now);
+    const int d = (r & 1) ? 2 : 3, sgn = (r & 2) ? 1 : -1;
+    fxEnd = now + 100;
+    fxNext = now + 1500 + r % 1500;
+    lv_obj_set_x(bootLogo, (CYD32_SCREEN_W - img_cyd32_logo_cyd.header.w) / 2 - sgn * d);
+    lv_obj_set_x(bootTitle, (CYD32_SCREEN_W - img_cyd32_title_cyd.header.w) / 2 + sgn * d);
+    if (scanLine) lv_obj_set_style_bg_color(scanLine, C(CYD32_SONAR_G4), 0);
+  }
+}
+radar::Style cydStyle(bool boot) {
+  radar::Style s{};
+  s.bg = CYD32_SONAR_BG_CYD;
+  s.wedge = cyd32_sonar_wedge_cyd;
+  s.droneRamp = cyd32_sonar_drone_decay_cyd;
+  s.rimW = 1;
+  s.tick5 = CYD_SONAR_TICK_LEN_5; s.tick10 = CYD_SONAR_TICK_LEN_10; s.tick30 = CYD_SONAR_TICK_LEN_30;
+  s.skip0 = 1; s.skip1 = 0;
+  s.bearFont = &lv_font_unscii_8;
+  s.bearRmax = 999;
+  s.idFont = &lv_font_unscii_8;
+  s.lineW = 1; s.underW = 2;
+  s.sweep = true;
+  if (boot) {
+    s.cx = CYD_BOOT_CX; s.cy = CYD_BOOT_CY;
+    for (int i = 0; i < 3; i++) s.rings[i] = cyd_boot_ring_r[i];
+    s.rim = cyd_boot_ring_r[3];
+    s.ringCol = CYD32_SONAR_G1;
+    s.crossR = s.rim;
+    s.bearR = CYD_BOOT_LABEL_R;
+    s.bearMaj = CYD32_SONAR_G4; s.bearMin = CYD32_SONAR_G2;
+    s.bearSkip = (1u << 2) | (1u << 3) | (1u << 9) | (1u << 10);  // 060 090 270 300 behind the titles
+  } else {
+    s.cx = CYD_SONAR_CX; s.cy = CYD_SONAR_CY - kTop;
+    for (int i = 0; i < 3; i++) s.rings[i] = cyd_sonar_ring_r[i];
+    s.rim = cyd_sonar_ring_r[3];
+    s.ringCol = CYD32_SONAR_G2;
+    s.crossR = s.rim;
+    s.bearR = CYD_SONAR_LABEL_R;
+    s.bearMaj = CYD32_SONAR_G4; s.bearMin = CYD32_SONAR_G3;
+    s.colPitchX10 = CYD_SONAR_COL_PITCH_X10; s.rowPitch = CYD_SONAR_ROW_PITCH;
+    s.lettersFont = &lv_font_unscii_8;
+    s.lettersDy = 3;
+    s.echoR = CYD_SONAR_ECHO_R;
+    s.boxSize = CYD_SONAR_TARGET_BOX;
+    s.boxW = 1;
+  }
+  return s;
 }
 
 void buildBoot() {
-  lv_obj_t *t = label(content, "CYD32", &lv_font_montserrat_24, CYD32_COL_AMBER);
-  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 30);
-  lv_obj_t *s = label(content, "passive RF sonar - " CYD32_VERSION, &lv_font_montserrat_12, CYD32_COL_WATER);
-  lv_obj_align(s, LV_ALIGN_TOP_MID, 0, 62);
-  bootBar = lv_bar_create(content);
-  lv_obj_set_size(bootBar, 200, 10); lv_obj_align(bootBar, LV_ALIGN_TOP_MID, 0, 95);
-  lv_obj_set_style_bg_color(bootBar, C(CYD32_COL_GRID), 0);
-  lv_obj_set_style_bg_color(bootBar, C(CYD32_COL_CYAN), LV_PART_INDICATOR);
-  bootMsg = label(content, "", &lv_font_unscii_8, CYD32_COL_OK);
-  lv_obj_align(bootMsg, LV_ALIGN_TOP_MID, 0, 115);
-  lv_obj_t *h = label(content, CYD32_HOLD_HINT, &lv_font_unscii_8, CYD32_COL_WATER);
-  lv_obj_align(h, LV_ALIGN_BOTTOM_MID, 0, -6);
+  makeStage(0, CYD32_SCREEN_H);
+  radarObj = radar::create(stage, 0, 0, CYD32_SCREEN_W, CYD32_SCREEN_H, cydStyle(true));
+  bootLogo = lv_image_create(stage);
+  lv_image_set_src(bootLogo, &img_cyd32_logo_cyd);
+  lv_obj_set_pos(bootLogo, (CYD32_SCREEN_W - img_cyd32_logo_cyd.header.w) / 2, CYD_BOOT_LOGO_Y);
+  bootTitle = lv_image_create(stage);
+  lv_image_set_src(bootTitle, &img_cyd32_title_cyd);
+  lv_obj_set_pos(bootTitle, (CYD32_SCREEN_W - img_cyd32_title_cyd.header.w) / 2, CYD_BOOT_TITLE_Y);
+  stageLabel("DEFENSIVE SONAR", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_MID, 0, CYD_BOOT_SUBTITLE_Y);
+  bootBar = lv_bar_create(stage);
+  lv_obj_remove_style_all(bootBar);
+  lv_obj_set_pos(bootBar, CYD_BOOT_BAR_X0, CYD_BOOT_BAR_Y);
+  lv_obj_set_size(bootBar, CYD_BOOT_BAR_X1 - CYD_BOOT_BAR_X0, 7);
+  lv_obj_set_style_border_color(bootBar, C(CYD32_SONAR_G3), 0);
+  lv_obj_set_style_border_width(bootBar, 1, 0);
+  lv_obj_set_style_pad_all(bootBar, 2, 0);
+  lv_obj_set_style_bg_color(bootBar, C(CYD32_SONAR_G4), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(bootBar, LV_OPA_COVER, LV_PART_INDICATOR);
+  const char *st[3] = {"BLE --", "WIFI --", "RID --"};
+  const int sx[3] = {88, 152, 224};
+  for (int i = 0; i < 3; i++) bootStat[i] = stageLabel(st[i], &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, sx[i], CYD_BOOT_STATUS_Y);
+  stageLabel(CYD32_HOLD_HINT, &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_MID, 0, 186);
+  stageLabel("BOOT", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 4, 3);
+  stageLabel("SELF-TEST", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, 4, 13);
+  bootPct = stageLabel("0%", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_RIGHT, -4, 3);
+  stageLabel("LOAD", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_RIGHT, -4, 13);
+  lv_obj_t *ver = stageLabel(CYD32_VERSION, &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_BOTTOM_LEFT, 4, -3);
+  lv_label_set_long_mode(ver, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(ver, 136);  // keep clear of the "180" bearing
+  scanLine = box(stage, 0, 0, CYD32_SCREEN_W, 1, CYD32_SONAR_G3);
+  lv_obj_set_style_bg_opa(scanLine, 56, 0);  // style bg opacity, not object opacity: no layer
+  scanY = 0;
+  fxNext = lv_tick_get() + 1200;
+  fxEnd = 0;
+  fxTimer = lv_timer_create(fxTick, 50, nullptr);
 }
 
-uint32_t mix(uint32_t x) { x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; return x; }
-
+// --- v9 phosphor sonar -------------------------------------------------------
 void buildSonar() {
-  const int d = 176, cx = CYD32_CONTENT_W / 2, cy = kContentH / 2;
-  for (int r = 1; r <= 3; r++) {
-    lv_obj_t *c = box(content, cx - d * r / 6, cy - d * r / 6, d * r / 3, d * r / 3, CYD32_COL_BG);
-    lv_obj_set_style_bg_opa(c, r == 3 ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_color(c, C(r == 3 ? CYD32_COL_AMBER : CYD32_COL_GRID), 0);
-    lv_obj_set_style_border_width(c, r == 3 ? 2 : 1, 0);
-  }
-  for (int i = 0; i < 10; i++) {
-    char s[2] = {(char)('A' + i), 0};
-    lv_obj_t *l = label(content, s, &lv_font_unscii_8, CYD32_COL_WATER);
-    lv_obj_set_pos(l, cx - d / 2 + 4 + i * (d - 8) / 10 + 4, cy - 4);
-  }
-  sweep = lv_line_create(content);
-  lv_obj_set_style_line_color(sweep, C(CYD32_COL_OK), 0);
-  lv_obj_set_style_line_width(sweep, 2, 0);
-  for (auto &b : blips) {
-    b = box(content, 0, 0, 6, 6, CYD32_COL_CYAN);
-    lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
-  }
-  sonarCnt = label(content, "", &lv_font_unscii_8, CYD32_COL_AMBER);
-  lv_obj_set_pos(sonarCnt, 4, 4);
+  makeStage(kTop, CYD_BUTTON_Y - kTop);
+  radarObj = radar::create(stage, 0, 0, CYD32_SCREEN_W, CYD_BUTTON_Y - kTop, cydStyle(false));
+  stageLabel("TGT", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_LEFT, 5, 4);
+  hudTgt = stageLabel("00", &lv_font_unscii_16, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 5, 13);
+  stageLabel("DRN", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_RIGHT, -5, 4);
+  hudDrn = stageLabel("00", &lv_font_unscii_16, CYD32_SONAR_DRONE, LV_ALIGN_TOP_RIGHT, -5, 13);
+  stageLabel("RX ONLY", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 5, 152);
+  stageLabel("PASSIVE", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, 5, 162);
+  for (int i = 0; i < 3; i++) hudSel[i] = stageLabel("", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_RIGHT, -5, 152 + i * 10);
 }
+// Contacts sit in the same pseudonymous grid cell as on the GRID screen. The
+// position is a hash of the address, not a direction: there is no direction
+// finding, so the HUD shows the channel instead of a bearing.
 void refreshSonar() {
-  const int cx = CYD32_CONTENT_W / 2, cy = kContentH / 2, R = 86;
-  sweepPts[0] = {cx, cy};
-  sweepPts[1] = {(lv_value_precise_t)(cx + R * cosf(sweepAngle)), (lv_value_precise_t)(cy + R * sinf(sweepAngle))};
-  lv_line_set_points(sweep, sweepPts, 2);
-  sweepAngle += 0.35f; if (sweepAngle > 6.2832f) sweepAngle -= 6.2832f;
+  if (!radarObj) return;
   static det::Entry e[24];
+  static radar::Contact rc[24];
   const int n = det::snapshot(e, 24);
-  for (int i = 0; i < 24; i++) {
-    if (i >= n) { lv_obj_add_flag(blips[i], LV_OBJ_FLAG_HIDDEN); continue; }
-    const float a = (mix(e[i].id) % 6283) / 1000.0f;
-    int rr = 100 + e[i].rssi;  if (rr < 0) rr = 0; if (rr > 70) rr = 70;  // strong = near centre
-    const float dist = R - 6 - rr * (R - 12) / 70.0f;
-    const bool drone = e[i].kind == det::DRONE;
-    lv_obj_set_pos(blips[i], cx + dist * cosf(a) - 3, cy + dist * sinf(a) - 3);
-    lv_obj_set_style_bg_color(blips[i], C(e[i].kind == det::BLE ? CYD32_COL_CYAN : CYD32_COL_AMBER), 0);
-    lv_obj_set_style_bg_opa(blips[i], drone ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(blips[i], drone ? LV_RADIUS_CIRCLE : 0, 0);
-    lv_obj_set_style_border_width(blips[i], drone ? 2 : 0, 0);
-    lv_obj_set_style_border_color(blips[i], C(CYD32_COL_HIT), 0);
-    lv_obj_remove_flag(blips[i], LV_OBJ_FLAG_HIDDEN);
+  const radar::Style s = cydStyle(false);
+  int sel = -1, labels = 0;
+  int best = -100000;  // selected: strongest drone, else strongest contact
+  for (int i = 0; i < n; i++) {
+    const int score = (e[i].kind == det::DRONE ? 1000 : 0) + e[i].rssi;
+    if (score > best) { best = score; sel = i; }
   }
-  const det::Counts c = det::counts();
-  char t[64]; snprintf(t, sizeof t, "WIFI %u\nBLE  %u\nRID  %u", c.wifi, c.ble, c.drone);
-  lv_label_set_text(sonarCnt, t);
+  for (int i = 0; i < n; i++) {
+    const uint32_t h = mix(e[i].id), slot = h % 80;
+    radar::Contact &c = rc[i];
+    memset(&c, 0, sizeof c);
+    radar::cellOffset(s, (int)(slot % 10), (int)(slot / 10), c.dx, c.dy);
+    c.kind = e[i].kind == det::DRONE ? radar::DRONE : e[i].kind == det::BLE ? radar::BLE : radar::WIFI;
+    c.seed = h;
+    if (i == sel || c.kind == radar::DRONE || labels < 6) {
+      c.id[0] = (char)('A' + slot % 10); c.id[1] = (char)('1' + slot / 10);
+      if (i != sel) labels++;
+    }
+  }
+  radar::setContacts(radarObj, rc, n, sel);
+  const det::Counts cnt = det::counts();
+  char t[24];
+  snprintf(t, sizeof t, "%02u", (unsigned)LV_MIN(cnt.wifi + cnt.ble, 99));
+  lv_label_set_text(hudTgt, t);
+  snprintf(t, sizeof t, "%02u", (unsigned)LV_MIN(cnt.drone, 99));
+  lv_label_set_text(hudDrn, t);
+  if (sel >= 0) {
+    const bool drone = e[sel].kind == det::DRONE;
+    snprintf(t, sizeof t, "SEL %s", rc[sel].id);
+    lv_label_set_text(hudSel[0], t);
+    lv_obj_set_style_text_color(hudSel[0], C(drone ? CYD32_SONAR_DRONE : CYD32_SONAR_G4), 0);
+    if (e[sel].kind == det::WIFI) snprintf(t, sizeof t, "WIFI CH%u", e[sel].channel);
+    else snprintf(t, sizeof t, "%s", drone ? "REMOTE ID" : "BLE");
+    lv_label_set_text(hudSel[1], t);
+    snprintf(t, sizeof t, "%dDBM", e[sel].rssi);
+    lv_label_set_text(hudSel[2], t);
+  } else {
+    lv_label_set_text(hudSel[0], "NO CONTACT");
+    lv_obj_set_style_text_color(hudSel[0], C(CYD32_SONAR_G3), 0);
+    lv_label_set_text(hudSel[1], "");
+    lv_label_set_text(hudSel[2], "");
+  }
 }
 
 constexpr int kCw = 24, kCh = 17, kGx = 22, kGy = 12;
@@ -201,7 +388,7 @@ void refreshGrid() {
   for (int i = 0; i < n; i++) { uint8_t &m = mark[mix(e[i].id) % 80]; m = e[i].kind == det::DRONE ? 2 : (m ? m : 1); }
   for (int i = 0; i < 80; i++) {
     lv_label_set_text(gridMarks[i], mark[i] ? "X" : ".");
-    lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? CYD32_COL_HIT : mark[i] ? CYD32_COL_AMBER : CYD32_COL_GRID), 0);
+    lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? CYD32_COL_DRONE : mark[i] ? CYD32_COL_AMBER : CYD32_COL_GRID), 0);
   }
   char t[96] = "LOG\n"; char id[9];
   for (int i = 0; i < n && i < 5; i++) {
@@ -230,6 +417,10 @@ uint32_t lastUniques = 0, growStart = 0, popStart = 0;
 uint16_t growFrom = 256, growTo = 256;
 uint8_t popping = 0;
 constexpr uint32_t kGrowMs = 560, kPopMs = 560;
+// V4: the egg (first hatch frame) sits for 3 s before the hatch plays; the
+// baby then grows with unique detections (creature::size()).
+constexpr uint32_t kEggIdleMs = 3000;
+uint32_t eggHoldUntil = 0;
 
 float backEase(float t) {
   if (t <= 0) return 0;
@@ -427,7 +618,8 @@ void startHappy() {
 void animTick(lv_timer_t *t) {
   nowMs = lv_tick_get();
   if (popping && popStart && nowMs - popStart >= kPopMs) { popping = 0; popStart = 0; }
-  if (i4Buf && anim && curSpec && anim->ms && anim != curSpec->cth_keys) {
+  const bool eggHold = playingHatch && (int32_t)(nowMs - eggHoldUntil) < 0;
+  if (i4Buf && anim && curSpec && anim->ms && anim != curSpec->cth_keys && !eggHold) {
     if ((uint16_t)(animFrame + 1) < anim->n) {
       applyDelta(anim->delta + anim->off[animFrame], deltaSlice(anim, animFrame));
       animFrame++;
@@ -459,6 +651,7 @@ void buildCreature() {
   if (creature::consumeHatched()) {
     playingHatch = true;
     setAnim(curSpec->hatch, 0);
+    eggHoldUntil = lv_tick_get() + kEggIdleMs;
   } else {
     startIdle();
   }
@@ -637,11 +830,22 @@ void buildUnsignedConfirm() {
 }
 void refreshHeader() {
   const det::Counts c = det::counts();
-  char t[48];
+  char t[8];
   // "W!" instead of the Wi-Fi count when the Wi-Fi scanner failed to start.
-  if (scanner::wifiFailed()) snprintf(t, sizeof t, "CYD32 W! B%u R%u", c.ble, c.drone);
-  else snprintf(t, sizeof t, "CYD32 W%u B%u R%u", c.wifi, c.ble, c.drone);
-  lv_label_set_text(headerLbl, t);
+  const bool wFail = scanner::wifiFailed();
+  if (wFail) snprintf(t, sizeof t, "!");
+  else snprintf(t, sizeof t, "%04u", (unsigned)LV_MIN(c.wifi, 9999));
+  lv_label_set_text(hdr[2], t);
+  snprintf(t, sizeof t, "%04u", (unsigned)LV_MIN(c.ble, 9999));
+  lv_label_set_text(hdr[4], t);
+  snprintf(t, sizeof t, "%04u", (unsigned)LV_MIN(c.drone, 9999));
+  lv_label_set_text(hdr[6], t);
+  // Phosphor: CYD32 G4, letters G3, digits G4, R digits DRONE. Y3-d: amber.
+  const uint16_t letter = phosphor ? CYD32_SONAR_G3 : CYD32_COL_AMBER, digit = phosphor ? CYD32_SONAR_G4 : CYD32_COL_AMBER;
+  const uint16_t wDigit = wFail ? (uint16_t)CYD32_COL_HIT : digit;
+  const uint16_t rDigit = CYD32_COL_DRONE;  // drones: true yellow #FCEE0A on every screen
+  const uint16_t cols[7] = {digit, letter, wDigit, letter, digit, letter, rDigit};
+  for (int i = 0; i < 7; i++) lv_obj_set_style_text_color(hdr[i], C(cols[i]), 0);
   lv_label_set_text(statusLbl, fw_status::kindStr());
   if (unsignedBanner || fw_status::kind() == fw_status::UNSIGNED) lv_obj_remove_flag(banner, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(banner, LV_OBJ_FLAG_HIDDEN);
@@ -651,14 +855,21 @@ void refreshHeader() {
 namespace ui {
 void begin() { buildChrome(); show(BOOT); }
 void show(Screen s) {
+  if (fxTimer) { lv_timer_delete(fxTimer); fxTimer = nullptr; }
+  if (stage) { lv_obj_delete(stage); stage = nullptr; }
+  radarObj = bootBar = bootPct = bootLogo = bootTitle = scanLine = nullptr;
   lv_obj_clean(content);
   if (animTimer) { lv_timer_delete(animTimer); animTimer = nullptr; }
   if (pool) { lv_image_cache_drop(&rgbDsc); free(pool); pool = i4Buf = i4Draw = rgbBuf = nullptr; }
   anim = nullptr; curSpec = nullptr; playingHappy = playingHatch = false;
   cur = s;
+  phosphor = s == SONAR;
   const bool tabs = s != BOOT && s != OTA && s != UNSIGNED_CONFIRM;
   if (tabs) lv_obj_remove_flag(tabbar, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(tabbar, LV_OBJ_FLAG_HIDDEN);
+  // The v9 boot screen is full screen (no header strip).
+  if (s == BOOT) lv_obj_add_flag(header, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(header, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_height(content, tabs ? kContentH : CYD32_SCREEN_H - CYD32_HEADER_Y - CYD32_HEADER_H);
+  styleChrome();
   switch (s) {
     case BOOT: buildBoot(); break;
     case SONAR: buildSonar(); break;
@@ -695,9 +906,21 @@ bool takeUpdateRequest() { bool r = updateReq; updateReq = false; return r; }
 int takeUnsignedDecision() { int d = unsignedDecision; unsignedDecision = -1; return d; }
 void setUnsignedBanner(bool on) { unsignedBanner = on; refreshHeader(); }
 void setBootProgress(int pct, const char *msg) {
-  if (cur != BOOT) return;
+  if (cur != BOOT || !bootBar) return;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
   lv_bar_set_value(bootBar, pct, LV_ANIM_OFF);
-  lv_label_set_text(bootMsg, msg);
+  char t[8];
+  snprintf(t, sizeof t, "%d%%", pct);
+  lv_label_set_text(bootPct, t);
+  // Light BLE / WIFI / RID as the self-test advances ("BLE OK", "WIFI OK", "RID OK").
+  const int step = msg && msg[0] == 'W' ? 1 : msg && msg[0] == 'R' ? 2 : msg && msg[0] == 'B' ? 0 : -1;
+  static const char *ok[3] = {"BLE OK", "WIFI OK", "RID OK"};
+  for (int i = 0; i < 3; i++) {
+    if (i > step) continue;
+    lv_label_set_text(bootStat[i], ok[i]);
+    lv_obj_set_style_text_color(bootStat[i], C(CYD32_SONAR_G4), 0);
+  }
 }
 }
 #endif
