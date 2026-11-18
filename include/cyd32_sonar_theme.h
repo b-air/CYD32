@@ -102,6 +102,9 @@ static const uint8_t sw_boot_ring_r[4]  = { 44, 88, 132, 176 };  /* G1 rings, ri
 #define SW_CROSS_R                    125    /* crosshair stops at ring 3 */
 #define SW_ECHO_R                     5      /* core; halo = 9 */
 #define SW_TARGET_BOX                 26
+/* Curved 4-tab band = the STANDARD StopWatch nav for every screen with the 4-tab menu
+   (SONAR, GRID, and any later screen that shows SONAR/GRID/CREA/MENU). Active tab = G4 fill + BG text,
+   idle = G1 fill + G2 outline + G4 text, Montserrat 16. Hit-test in polar coordinates. */
 #define SW_TAB_R0                     148
 #define SW_TAB_R1                     206
 #define SW_TAB_BRG0                   130    /* MENU | CREA | GRID | SONAR from 130 to 230 deg */
@@ -110,9 +113,17 @@ static const uint8_t sw_boot_ring_r[4]  = { 44, 88, 132, 176 };  /* G1 rings, ri
 #define SW_TAB_GAP_DEG                2
 #define SW_KEYTAG_TICK_R0             201    /* 2 px G4 tick at 270 (A BACK) and 090 (B SELECT) */
 #define SW_KEYTAG_TICK_R1             210
-#define SW_BOOT_LOGO_Y                116    /* img_cyd32_logo_sw */
+#define SW_BOOT_LOGO_Y                116    /* img_m5stack_logo_sw */
 #define SW_BOOT_TITLE_Y               182    /* img_cyd32_title_sw */
 #define SW_BOOT_SUBTITLE_Y            236    /* "DEFENSIVE SONAR" unscii_16, G4 */
+#define SW_BOOT_DEVICE_Y              270    /* "STOPWATCH" Montserrat 14, G3 */
+/* StopWatch GRID (green-leaning): 10 x 8 cells of 20 px, origin below; labels unscii_16 G4 */
+#define SW_GRID_X0                    141
+#define SW_GRID_Y0                    104
+#define SW_GRID_CELL                  20
+#define SW_GRID_PLATE_Y0              280    /* chamfered info plate 200 x 42, G2 outline, G1 fill */
+#define SW_GRID_PLATE_H               42
+#define SW_RIM_R                      207    /* green bezel ring (G2) + 10/30 deg ticks, gap behind the tab band */
 /* Wardriving (signal-only): radius from RSSI, angle = stable hash of the address (NOT a direction) */
 static const int8_t sw_ward_ring_dbm[4] = { -40, -55, -70, -85 };
 #define SW_WARD_RSSI_R(dbm)           ((((-(dbm)) - 25) * 166) / 60)   /* clamp to [8, 160] */
@@ -121,7 +132,7 @@ static const int8_t sw_ward_ring_dbm[4] = { -40, -55, -70, -85 };
 #if defined(LV_LVGL_H_INCLUDE_SIMPLE) || defined(LVGL_H)
 LV_IMAGE_DECLARE(img_cyd32_logo_cyd);   /* 172x44 I4, 3848 B */
 LV_IMAGE_DECLARE(img_cyd32_title_cyd);   /* 272x32 I4, 4416 B */
-LV_IMAGE_DECLARE(img_cyd32_logo_sw);   /* 216x56 I4, 6112 B */
+LV_IMAGE_DECLARE(img_m5stack_logo_sw);   /* 296x56 I4, 8352 B */
 LV_IMAGE_DECLARE(img_cyd32_title_sw);   /* 404x44 I4, 8952 B */
 #endif
 
