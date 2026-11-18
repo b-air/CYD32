@@ -34,6 +34,11 @@
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_24 1
+#if defined(CYD32_HW_M5STACK_STOPWATCH)
+/* StopWatch: larger text on the 466 px round panel (user request, 18 Nov 2026). */
+#define LV_FONT_MONTSERRAT_18 1
+#define LV_FONT_MONTSERRAT_20 1
+#endif
 #define LV_FONT_UNSCII_8 1
 #define LV_FONT_UNSCII_16 1   /* v9 sonar: bearings, IDs, counts */
 #define LV_FONT_DEFAULT &lv_font_montserrat_12

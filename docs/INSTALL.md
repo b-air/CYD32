@@ -383,6 +383,8 @@ entry 0x403c98d0
 
 `entry 0x403c98d0` is the entry point of `bootloader-m5stack-stopwatch.bin`. With `v0.2.0-test3`, the `[boot <ms>]` lines are the same as on the CYD (2.5), except that the display step is `M5.begin (CO5300, CST820B, PMIC)`, there is a `wardriving` step, and the log prints `draw buffer in internal DMA, 40 lines` and then `draw buffer <address>, 37280 bytes` (an internal RAM address, starting with `0x3fc`). `draw buffer in PSRAM, 40 lines` (address starting with `0x3c` or `0x3d`) is only the fallback when internal DMA memory is short: it works, but report it.
 
+**Touch log (StopWatch builds after `v0.2.0-test3`).** At start-up one line reports the touch controller, for example `[boot <ms>] touch: init ok=1 i2c=0x15 int=13 range x 0..233 y 0..233 rot=0 panel=468x468` (or `touch: init FAILED ...`). Each tap then prints `touch: down raw=<x>,<y> xy=<x>,<y> r=<distance from centre>`, a `touch: hold ...` line every 0.5 s while the finger stays down, `touch: up xy=<x>,<y> after <ms> ms`, and `touch: hit tab <NAME>` or `touch: hit menu <NAME>` when a tab or a menu sector is recognised. If a tap does not do what you expect, send the `touch: init` line and the lines of 3 test taps: the centre of the screen, the **SONAR** tab (bottom left) and the **MENU** tab (bottom right).
+
 ---
 
 ## 4. Later updates over Wi-Fi from an iPhone (OTA) — both devices

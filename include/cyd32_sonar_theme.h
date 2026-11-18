@@ -91,22 +91,23 @@ static const uint8_t cyd_boot_ring_r[4] = { 25, 50, 75, 100 };   /* G1 rings, ri
 /* ---------- StopWatch 466x466 (integer centre 233; mockups use 232.5) ---------- */
 #define SW_CX                         233
 #define SW_CY                         233
-#define SW_SAFE_R                     213    /* no ink beyond r = 211 */
-static const uint8_t sw_sonar_ring_r[4] = { 42, 83, 125, 166 };  /* last = rim (G3, 1-2 px) */
-static const uint8_t sw_boot_ring_r[4]  = { 44, 88, 132, 176 };  /* G1 rings, rim + progress arc */
+#define SW_SAFE_R                     229    /* full panel: no ink beyond r = 227 (r = 233 is the glass edge) */
+static const uint8_t sw_sonar_ring_r[4] = { 46, 92, 138, 184 };  /* last = rim (G3, 1-2 px) */
+static const uint8_t sw_boot_ring_r[4]  = { 48, 97, 145, 194 };  /* G1 rings, rim + progress arc */
 #define SW_TICK_LEN_5                 4
 #define SW_TICK_LEN_10                7
 #define SW_TICK_LEN_30                10
-#define SW_LABEL_R                    188    /* unscii_16; pull inward until far corner <= 210 */
-#define SW_BOOT_LABEL_R               196
-#define SW_CROSS_R                    125    /* crosshair stops at ring 3 */
+#define SW_LABEL_R                    207    /* unscii_16; pulled inward until far corner <= 226 */
+#define SW_BOOT_LABEL_R               214
+#define SW_CROSS_R                    138    /* crosshair stops at ring 3 */
 #define SW_ECHO_R                     5      /* core; halo = 9 */
-#define SW_TARGET_BOX                 26
-/* Curved 4-tab band = the STANDARD StopWatch nav for every screen with the 4-tab menu
-   (SONAR, GRID, and any later screen that shows SONAR/GRID/CREA/MENU). Active tab = G4 fill + BG text,
-   idle = G1 fill + G2 outline + G4 text, Montserrat 16. Hit-test in polar coordinates. */
-#define SW_TAB_R0                     148
-#define SW_TAB_R1                     206
+#define SW_TARGET_BOX                 28
+/* Curved 4-tab band = the STANDARD StopWatch nav on every screen except boot, the running
+   update and the unsigned-mode prompt. Active tab = G4 fill + BG text, idle = G1 fill + G2
+   outline + G4 text, Montserrat 18. Hit-test in polar coordinates.
+   StopWatch geometry uses the whole 466 px panel (outer ink at r <= 227). */
+#define SW_TAB_R0                     160
+#define SW_TAB_R1                     225
 #define SW_TAB_BRG0                   130    /* MENU | CREA | GRID | SONAR from 130 to 230 deg */
 #define SW_TAB_BRG1                   230
 #define SW_TAB_SPAN_DEG               25
@@ -117,16 +118,16 @@ static const uint8_t sw_boot_ring_r[4]  = { 44, 88, 132, 176 };  /* G1 rings, ri
 #define SW_BOOT_TITLE_Y               182    /* img_cyd32_title_sw */
 #define SW_BOOT_SUBTITLE_Y            236    /* "DEFENSIVE SONAR" unscii_16, G4 */
 #define SW_BOOT_DEVICE_Y              270    /* "STOPWATCH" Montserrat 14, G3 */
-/* StopWatch GRID (green-leaning): 10 x 8 cells of 20 px, origin below; labels unscii_16 G4 */
-#define SW_GRID_X0                    141
-#define SW_GRID_Y0                    104
-#define SW_GRID_CELL                  20
-#define SW_GRID_PLATE_Y0              280    /* chamfered info plate 200 x 42, G2 outline, G1 fill */
-#define SW_GRID_PLATE_H               42
-#define SW_RIM_R                      207    /* green bezel ring (G2) + 10/30 deg ticks, gap behind the tab band */
+/* StopWatch GRID (green-leaning): 10 x 8 cells of 22 px, origin below; labels unscii_16 G4 */
+#define SW_GRID_X0                    123
+#define SW_GRID_Y0                    106
+#define SW_GRID_CELL                  22
+#define SW_GRID_PLATE_Y0              292    /* chamfered info plate 200 x 44, G2 outline, G1 fill */
+#define SW_GRID_PLATE_H               44
+#define SW_RIM_R                      226    /* green bezel ring (G2) + 10/30 deg ticks, gap behind the tab band */
 /* Wardriving (signal-only): radius from RSSI, angle = stable hash of the address (NOT a direction) */
 static const int8_t sw_ward_ring_dbm[4] = { -40, -55, -70, -85 };
-#define SW_WARD_RSSI_R(dbm)           ((((-(dbm)) - 25) * 166) / 60)   /* clamp to [8, 160] */
+#define SW_WARD_RSSI_R(dbm)           ((((-(dbm)) - 25) * 184) / 60)   /* clamp to [8, 178] */
 
 /* ---------- title / logo assets (I4, palette index 0 transparent) ---------- */
 #if defined(LV_LVGL_H_INCLUDE_SIMPLE) || defined(LVGL_H)

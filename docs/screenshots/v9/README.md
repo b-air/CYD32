@@ -10,3 +10,12 @@ version strings in these images are **EXAMPLE DATA**.
   board's `lv_conf.h`, 40-line partial draw buffer) and stubbed data. On the
   StopWatch, pixels outside the r = 233 circle are blanked, as on the round
   panel.
+- `test3-byteswap/`: the `v0.2.0-test3` StopWatch UI rendered the same way,
+  but with each RGB565 pixel byte-swapped as M5GFX did on the watch
+  (`pushImage()` with a plain `uint16_t *` reads the buffer as big-endian
+  `swap565`). These match the hardware photos of `v0.2.0-test3`: green
+  bearings in blue, dim greens in tan / pale yellow, G5 text in magenta,
+  drones in violet. Fixed after `v0.2.0-test3`; kept to document the bug.
+- The StopWatch `firmware-host/` images were re-rendered after
+  `v0.2.0-test3` (full-panel layout, larger text, A / B key tags at 310 /
+  050 deg, tab band on every screen, outlined menu).
