@@ -51,6 +51,7 @@ void touchCb(lv_indev_t *, lv_indev_data_t *data) {
   if (hw::touch(x, y)) { data->point.x = x; data->point.y = y; data->state = LV_INDEV_STATE_PRESSED; }
   else data->state = LV_INDEV_STATE_RELEASED;
 }
+bool bufAligned(const void *p) { return p && ((uintptr_t)p % LV_DRAW_BUF_ALIGN) == 0; }
 void pump(uint32_t ms) { const uint32_t e = millis() + ms; while ((int32_t)(millis() - e) < 0) { lv_timer_handler(); delay(5); } }
 
 void selfTest() {
@@ -79,18 +80,28 @@ void setup() {
   BOOT_STEP("creature", creature::begin());
   BOOT_STEP("fw_status", fw_status::begin());
   BOOT_STEP("hw", hw::begin());
+  uint8_t *buf = nullptr;
 #ifdef CYD32_HW_M5STACK_STOPWATCH
   BOOT_STEP("wardriving", wardriving::begin());
   drawBufSz = (size_t)CYD32_SCREEN_W * kBufLines * 2;
   drawBuf = (uint8_t *)heap_caps_malloc(drawBufSz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!drawBuf) drawBuf = (uint8_t *)malloc(drawBufSz);
+  buf = drawBuf;
   const size_t bufSz = drawBufSz;
 #else
+  buf = drawBuf;
   const size_t bufSz = sizeof drawBuf;
 #endif
-  BOOT_LOG("draw buffer %p, %u bytes", (void *)drawBuf, (unsigned)bufSz);
-  if (!drawBuf || ((uintptr_t)drawBuf % LV_DRAW_BUF_ALIGN) != 0) {
-    BOOT_LOG("FATAL: draw buffer missing or not %d-byte aligned", LV_DRAW_BUF_ALIGN);
+  BOOT_LOG("draw buffer %p, %u bytes", (void *)buf, (unsigned)bufSz);
+  if (!bufAligned(buf)) {
+    // Never hand LVGL a bad buffer: its assert would abort and reset in a loop.
+    BOOT_LOG("draw buffer missing or not %d-byte aligned, trying an aligned heap buffer", LV_DRAW_BUF_ALIGN);
+    buf = (uint8_t *)heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, bufSz, MALLOC_CAP_8BIT);
+    BOOT_LOG("heap draw buffer %p", (void *)buf);
+    if (!bufAligned(buf)) hw::fatal("draw buffer allocation failed");
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+    drawBuf = buf;
+#endif
   }
   BOOT_STEP("lv_init", lv_init());
   lv_tick_set_cb(tick);
@@ -98,7 +109,7 @@ void setup() {
   BOOT_STEP("lv_display_create", disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H));
   lv_display_set_flush_cb(disp, flushCb);
   BOOT_STEP("lv_display_set_buffers",
-            lv_display_set_buffers(disp, drawBuf, nullptr, bufSz, LV_DISPLAY_RENDER_MODE_PARTIAL));
+            lv_display_set_buffers(disp, buf, nullptr, bufSz, LV_DISPLAY_RENDER_MODE_PARTIAL));
   lv_indev_t *in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, touchCb);
@@ -106,16 +117,19 @@ void setup() {
   BOOT_STEP("first frame", pump(1));
 
   // Physical gesture for the one-shot unsigned mode: hold the board button
-  // (BOOT / GPIO0 on CYD, KEYA / GPIO2 on StopWatch) during the 3 s splash.
+  // (BOOT / GPIO0 on CYD, KEYA / GPIO2 on StopWatch) for 3 s during the splash.
+  // The splash waits while the button is held, so a full 3 s hold always fits.
   // On CYD, pressing BOOT *before* reset enters the ROM USB bootloader instead.
+  constexpr uint32_t kHoldMs = 3000;
   uint32_t held = 0;
-  for (int i = 0; i <= 30; i++) {
-    ui::setBootProgress(i * 100 / 30, i < 10 ? "BLE OK" : i < 20 ? "WIFI OK" : "RID OK");
+  for (int i = 0; i <= 30 || (held > 0 && held < kHoldMs); i++) {
+    const int p = i < 30 ? i : 30;
+    ui::setBootProgress(p * 100 / 30, p < 10 ? "BLE OK" : p < 20 ? "WIFI OK" : "RID OK");
     held = hw::bootButtonPressed() ? held + 100 : 0;
     pump(100);
-    if (held >= 2500) break;
+    if (held >= kHoldMs) break;
   }
-  if (held >= 2500) {
+  if (held >= kHoldMs) {
     ui::show(ui::UNSIGNED_CONFIRM);
     int d = -1;
     const uint32_t t0 = millis();

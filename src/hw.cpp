@@ -58,5 +58,16 @@ void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
   tft.pushImage(x, y, w, h, reinterpret_cast<const lgfx::rgb565_t *>(px));
 }
 bool bootButtonPressed() { return digitalRead(0) == LOW; }
+void fatal(const char *msg) {
+  BOOT_LOG("FATAL: %s. Halted.", msg);
+  tft.fillScreen(0x0000);
+  tft.setTextColor(0xF800, 0x0000);  // red on black
+  tft.setTextSize(2);
+  tft.drawString("CYD32 FATAL ERROR", 8, 8);
+  tft.setTextSize(1);
+  tft.drawString(msg, 8, 40);
+  tft.drawString("Halted. See the serial console (115200).", 8, 56);
+  for (;;) delay(1000);  // stay on this screen: no reset loop
+}
 }  // namespace hw
 #endif

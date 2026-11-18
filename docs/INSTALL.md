@@ -4,7 +4,7 @@
 
 **Release covered: `v0.2.0-test1`** (built from commit `d79be3f4d7e4`, published 13 Nov 2026, 17:00 UTC).
 
-> ⚠️ **HARDWARE UNTESTED.** `v0.2.0-test1` is a test build. Neither firmware has been run on a real CYD or StopWatch yet. Follow these steps to test it, and expect problems.
+> ⚠️ **HARDWARE TEST STATUS.** `v0.2.0-test1` is a test build. **CYD:** the hardware test on 18 Nov 2026 found a boot hang (black screen with the backlight on, see the known issue below); the fix awaits a hardware test. **StopWatch:** not tested on hardware yet. Follow these steps to test it, and expect problems.
 
 > ⚠️ **KNOWN ISSUE IN `v0.2.0-test1` (CYD only).** On the first hardware test (18 Nov 2026), the CYD's backlight came on but the screen stayed **black**, and the serial console stopped after the line `[E][Preferences.cpp:503] getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND`. The flash itself worked (the bootloader and the application start). The firmware stops while it sets up the display: LVGL requires a 4-byte-aligned draw buffer, and in this build the buffer sits at an odd address, so LVGL halts silently. The fix (and a serial line for each start-up step) is ready for the next test build. The StopWatch build is not affected by this bug. The flashing steps below stay the same for the next build; only the file hashes will change.
 
@@ -40,7 +40,7 @@ This guide explains, for each device:
 - **A computer** (Windows, macOS or Linux) with **Google Chrome or Microsoft Edge** (desktop version). The web flasher uses **Web Serial**, which Safari and Firefox do not support (the flasher page shows "This tool is not supported on Safari browser!"). An iPhone or iPad **cannot** be used for the first install, because iOS has no Web Serial.
 - **A USB data cable.** Some cables only charge; with those the device never appears in the browser's port list. CYD: micro-USB (use the board's only USB port). StopWatch: USB Type-C.
 - **A USB driver, only if the port does not appear:**
-  - CYD: its USB-to-serial chip is a **CH340** (some batches use a **CP210x**). Windows and older macOS may need the driver: CH340 <https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all>, CP210x <https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers>. Linux has both drivers built in.
+  - CYD: its USB-to-serial chip is a **CH340** (some batches use a **CP210x**). Windows and older macOS may need the driver: CH340 <https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all>; for a CP210x, the Silicon Labs CP210x USB to UART VCP driver (from the chip maker, Silicon Labs). Linux has both drivers built in.
   - StopWatch: none. The ESP32-S3 has a built-in USB port that every current OS recognises.
 - **The 4 first-install files** for your device, downloaded to the computer (section 1).
 - For later updates: an iPhone with Safari, and the signed `.bin` saved in the **Files** app.
@@ -113,7 +113,7 @@ Important: on the CYD (ESP32) the bootloader goes at **`0x1000`**, not `0x0`. Se
 
 ### 2.2 USB driver (only if the port does not show up)
 
-The CYD's USB-to-serial chip is a **CH340** on most boards (source: the CYD community setup guide); some batches use a **CP210x**. If the board does not appear in the browser's port list in step 5 of 2.3, install the matching driver: CH340 <https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all>, CP210x <https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers>. Then unplug and replug the board.
+The CYD's USB-to-serial chip is a **CH340** on most boards (source: the CYD community setup guide); some batches use a **CP210x**. If the board does not appear in the browser's port list in step 5 of 2.3, install the matching driver: CH340 <https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all>; CP210x: the Silicon Labs CP210x USB to UART VCP driver (from the chip maker, Silicon Labs). Then unplug and replug the board.
 
 ### 2.3 First install, step by step (web flasher)
 
@@ -435,7 +435,7 @@ Use this only to install a file that is **not signed** (for example a test build
 2. **When the boot screen appears** (it shows "Hold BOOT 3 s…" / "Hold KEYA 3 s…"), **hold** the button:
    - **CYD:** **BOOT**. Hold it only once the splash is showing. If you hold BOOT *before* the reset, the ESP32 starts the USB download mode instead.
    - **StopWatch:** **KEYA** (yellow).
-   Hold it without letting go for about 3 seconds. The firmware needs **at least 2.5 seconds of continuous hold** during the ~3-second splash, so start holding right away.
+   Start holding as soon as the splash appears and hold it **for 3 seconds without letting go**. From the next test build on, the firmware arms at exactly 3 seconds and the splash waits while you hold the button.
 3. The screen shows **"…held. Arm UNSIGNED update mode?"** with **Cancel** and **Arm unsigned**. Tap **Arm unsigned** within **30 seconds**. Otherwise nothing is armed. On the StopWatch, KEYA or KEYB mean **Cancel**.
 4. A red **UNSIGNED FIRMWARE MODE** banner appears. Start update mode (4.2). The screen and the web page show **UNSIGNED ARMED**.
 5. Upload the unsigned `.bin` (4.3). The arming only applies to the update session you start next (it is not kept if you leave or restart). Within that session, the first unsigned upload uses it up, whether it succeeds or not.
@@ -477,7 +477,7 @@ Board check, file size, ESP-IDF validation and the downgrade question still appl
 
 - **USB always works.** CYD32 burns no eFuse and uses no Secure Boot and no flash encryption, so you can always reinstall over USB (section 2 or 3).
 - The web flasher does **not** check which board a file is for. Only the OTA path checks the board. Check the file names carefully before clicking **Program**.
-- **Things not confirmed on real hardware yet**: the whole procedure, port names, the CYD buttons' names and positions, whether the flasher resets the boards by itself, the exact port names, the StopWatch console output, iOS dialog wording, and the "Official" status after a USB install.
+- **Things not confirmed on real hardware yet**: the CYD start-up with the fix, the whole StopWatch procedure, the CYD buttons' names and positions, whether the flasher resets the boards by itself, the exact port names, the StopWatch console output, iOS dialog wording, and the "Official" status after a USB install.
 
 ## Sources
 

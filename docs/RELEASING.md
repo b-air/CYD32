@@ -33,8 +33,8 @@ archive is missing.
 ## 3. Sign locally and upload
 
 ```bash
-gh release download v0.2.0 -p firmware-cyd.bin -p firmware-m5stack-stopwatch.bin -p SHA256SUMS -D dist/v0.2.0
-cd dist/v0.2.0 && sha256sum -c SHA256SUMS --ignore-missing && cd -
+gh release download v0.2.0 -p '*.bin' -p SHA256SUMS -D dist/v0.2.0
+cd dist/v0.2.0 && grep '\.bin$' SHA256SUMS | sha256sum -c && cd -
 gh attestation verify dist/v0.2.0/firmware-cyd.bin -R <owner>/CYD32
 gh attestation verify dist/v0.2.0/firmware-m5stack-stopwatch.bin -R <owner>/CYD32
 scripts/sign.sh dist/v0.2.0/firmware-cyd.bin dist/v0.2.0/firmware-cyd-signed.bin 0
