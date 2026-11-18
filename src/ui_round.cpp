@@ -561,7 +561,7 @@ void refreshSonar() {
   radar::setContacts(radarObj, rc, n, sel);
   const det::Counts c = det::counts();
   char t[32];
-  if (scanner::wifiFailed()) snprintf(t, sizeof t, "W !");
+  if (scanner::wifiFailed()) snprintf(t, sizeof t, "W!");
   else snprintf(t, sizeof t, "W %04u", (unsigned)LV_MIN(c.wifi, 9999));
   lv_label_set_text(hudW, t);
   snprintf(t, sizeof t, "B %04u", (unsigned)LV_MIN(c.ble, 9999));

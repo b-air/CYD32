@@ -4,6 +4,8 @@
 
 **Release covered: `v0.2.0-test1`** (built from commit `d79be3f4d7e4`, published 13 Nov 2026, 17:00 UTC).
 
+> ℹ️ **`v0.2.0-test3` RELEASE PENDING.** Sections 2.4, 2.5, 3.4 and 3.5 already describe the `v0.2.0-test3` firmware (phosphor sonar UI, StopWatch first-frame fix, Wi-Fi receive fix, CYD touch fix). The `v0.2.0-test3` release is **not published yet**. All file links, SHA-256 hashes, the `d79be3f4d7e4` commit and the `*-signed.bin` links below are still those of **`v0.2.0-test1`**. They will be updated when `v0.2.0-test3` is published; its hashes come from the release workflow after the merge and tag. Like `v0.2.0-test2`, `v0.2.0-test3` will be **unsigned** (no `*-signed.bin`).
+
 > ⚠️ **HARDWARE TEST STATUS.** `v0.2.0-test1` is a test build. **CYD:** the hardware test on 18 Nov 2026 found a boot hang (black screen with the backlight on, see the known issue below); the fix awaits a hardware test. **StopWatch:** not tested on hardware yet. Follow these steps to test it, and expect problems.
 
 > ⚠️ **KNOWN ISSUE IN `v0.2.0-test1` (CYD only).** On the first hardware test (18 Nov 2026), the CYD's backlight came on but the screen stayed **black**, and the serial console stopped after the line `[E][Preferences.cpp:503] getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND`. The flash itself worked (the bootloader and the application start). The firmware stops while it sets up the display: LVGL requires a 4-byte-aligned draw buffer, and in this build the buffer sits at an odd address, so LVGL halts silently. The fix (and a serial line for each start-up step) is ready for the next test build. The StopWatch build is not affected by this bug. The flashing steps below stay the same for the next build; only the file hashes will change.
@@ -178,7 +180,7 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 - The header reads **`CYD32 W0012 B0034 R0000`** (Wi-Fi, BLE and Remote ID contacts seen in the last 60 s). **`W!`** in red instead of the Wi-Fi count means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (2.5) if you see it.
 - Touch: tap a tab at the left and at the right edge of the screen. The tab under your finger must open (`v0.2.0-test2` mirrored the X axis: a tap on the left opened the tab on the right).
 - Tap **MENU → About**. You should see:
-  - `Version  v0.2.0-test1`
+  - `Version  v0.2.0-test1` (with `v0.2.0-test3`: `Version  v0.2.0-test3`, and the commit of that release)
   - `Commit   d79be3f4d7e4`
   - `Target   cyd`
   - `Status   Official` (*expected according to the code for this release build; to be confirmed on the device*)
@@ -352,7 +354,7 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 - **`W!`** in red next to the battery instead of **2.4G** means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (3.5).
 - In `v0.2.0-test2` the StopWatch screen stayed **black**; `v0.2.0-test3` contains the fix. The console now prints `flush #1 ...` / `flush #1 ok` for the first three screen updates and `first frame: <n> flushes`. If the first frame is not drawn within 5 s it prints `first frame NOT done after 5 s` with the free memory.
 - To open the menu: tap **MENU** on the rim, or **hold KEYA and KEYB together for about 1 second** (800 ms in the code). Tap the **COUNTERS** wedge, then tap **SIG** in the centre or press **KEYB** to open **ABOUT**. You should see:
-  - `Version  v0.2.0-test1`
+  - `Version  v0.2.0-test1` (with `v0.2.0-test3`: `Version  v0.2.0-test3`, and the commit of that release)
   - `Commit   d79be3f4d7e4`
   - `Target   m5stack-stopwatch`
   - `Status   Official` (*expected, to be confirmed*)
@@ -377,7 +379,7 @@ mode:DIO, clock div:1
 entry 0x403c98d0
 ```
 
-`entry 0x403c98d0` is the entry point of `bootloader-m5stack-stopwatch.bin`. On a fresh device the same harmless `sha NOT_FOUND` line can appear with `v0.2.0-test1`. With the fixed build, the `[boot <ms>]` lines are the same as on the CYD (2.5), except that the display step is `M5.begin (CO5300, CST820B, PMIC)`, the draw buffer is in PSRAM (address starting with `0x3c` or `0x3d`), and there is a `wardriving` step.
+`entry 0x403c98d0` is the entry point of `bootloader-m5stack-stopwatch.bin`. On a fresh device the same harmless `sha NOT_FOUND` line can appear with `v0.2.0-test1`. With the fixed build, the `[boot <ms>]` lines are the same as on the CYD (2.5), except that the display step is `M5.begin (CO5300, CST820B, PMIC)`, the log prints `draw buffer in internal DMA, 40 lines` and then `draw buffer <address>, 37280 bytes` (an internal RAM address, starting with `0x3fc`), and there is a `wardriving` step. `draw buffer in PSRAM, 40 lines` (address starting with `0x3c` or `0x3d`) is only the fallback when internal DMA memory is short: it works, but report it.
 
 ---
 
