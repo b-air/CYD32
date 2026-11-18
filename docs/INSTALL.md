@@ -346,9 +346,9 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 
 ### 3.4 How to know it worked (StopWatch)
 
-- Round boot screen (from `v0.2.0-test3`, green phosphor radar on a pure black background): the **CYD32** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR**, **M5 STOPWATCH**, **BLE OK / WIFI OK / RID OK**, **LOAD xx%** with a progress arc on the rim, the version and the hint **Hold KEYA 3 s: unsigned update**. The scanline and the short title jumps are intended.
+- Round boot screen (from `v0.2.0-test3`, green phosphor radar on a pure black background): the **M5Stack** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR**, **STOPWATCH**, **BLE OK / WIFI OK / RID OK**, **LOAD xx%** with a progress arc on the rim, the version and the hint **Hold KEYA 3 s: unsigned update**. The scanline and the short title jumps are intended.
   (`v0.2.0-test1` showed **CYD32**, **DEFENSIVE SONAR**, **M5 STOPWATCH** and a yellow arc.)
-- Then the **creature** screen: an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. **SONAR** is in the menu and in the curved tab band at the bottom of the sonar and grid screens.
+- Then the **creature** screen: an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. **SONAR** is in the menu and in the curved tab band at the bottom of the sonar and grid screens. All screens are green; only drones are yellow. On **GRID**, tap a cell to show its details in the plate under the grid.
 - **`W!`** in red next to the battery instead of **2.4G** means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (3.5).
 - In `v0.2.0-test2` the StopWatch screen stayed **black**; `v0.2.0-test3` contains the fix. The console now prints `flush #1 ...` / `flush #1 ok` for the first three screen updates and `first frame: <n> flushes`. If the first frame is not drawn within 5 s it prints `first frame NOT done after 5 s` with the free memory.
 - To open the menu: tap **MENU** on the rim, or **hold KEYA and KEYB together for about 1 second** (800 ms in the code). Tap the **COUNTERS** wedge, then tap **SIG** in the centre or press **KEYB** to open **ABOUT**. You should see:
