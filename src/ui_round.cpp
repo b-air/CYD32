@@ -24,9 +24,8 @@
 #include "ui_radar.h"
 #include "src/core/lv_obj_event_private.h"  // lv_hit_test_info_t (polar tab hit test)
 
-// Boot logo tile (I4, StopWatch background baked in). The Graphic Designer is
-// replacing it with an "M5Stack" tile under a new name: swap it here.
-#define CYD32_SW_BOOT_LOGO img_cyd32_logo_sw
+// Boot logo tile: "M5Stack" glitch logo, I4, StopWatch background baked in.
+#define CYD32_SW_BOOT_LOGO img_m5stack_logo_sw
 
 namespace {
 // StopWatch: green phosphor on every screen (user request, 18 Nov 2026). The
@@ -67,8 +66,8 @@ lv_obj_t *wdCnt[3], *wdRid;
 uint32_t trackedId = 0;
 bool hasTracked = false;
 
-constexpr int kCw = 24, kCh = 20, kGx = 113, kGy = 108;
-lv_obj_t *gridMarks[80], *gridPlate, *gridPlateLbl;
+constexpr int kCw = SW_GRID_CELL, kCh = SW_GRID_CELL, kGx = SW_GRID_X0, kGy = SW_GRID_Y0;
+lv_obj_t *gridMarks[80], *gridPlate, *gridPlateLbl, *gridPlateLbl2;
 int selCol = -1, selRow = -1;
 det::Entry selEnt{};
 bool haveSel = false;
@@ -158,29 +157,42 @@ lv_obj_t *mkArc(lv_obj_t *p, int x, int y, int s, int a0, int a1, uint16_t bg, u
   return a;
 }
 
+// Bezel for the non-sonar screens (README section 7): G2 ring at r = 207,
+// 10 deg G2 / 30 deg G3 ticks pointing inward, with a gap behind the tab band.
 void drawFrame(lv_event_t *e) {
   lv_layer_t *L = lv_event_get_layer(e);
+  const bool band = tabbar && !lv_obj_has_flag(tabbar, LV_OBJ_FLAG_HIDDEN);
+  const int gap0 = band ? SW_TAB_BRG0 : 1, gap1 = band ? SW_TAB_BRG1 : 0;
   lv_draw_arc_dsc_t a;
   lv_draw_arc_dsc_init(&a);
   a.center.x = CX; a.center.y = CY;
-  a.start_angle = 0; a.end_angle = 360;
-  static const int16_t rings[5] = {232, 210, 168, 126, 84};
-  for (int i = 0; i < 5; i++) {
-    a.radius = rings[i];
-    a.width = i == 0 ? 3 : 1;
-    a.color = C(i == 0 ? COL_RIM : COL_DIM);
-    lv_draw_arc(L, &a);
-  }
+  a.radius = SW_RIM_R;
+  a.width = 1;
+  a.color = C(COL_DIM);
+  if (band) { a.start_angle = gap1 - 90; a.end_angle = gap0 - 90 + 360; }
+  else { a.start_angle = 0; a.end_angle = 360; }
+  lv_draw_arc(L, &a);
   lv_draw_line_dsc_t d;
   lv_draw_line_dsc_init(&d);
   d.width = 1;
-  for (int i = 0; i < 36; i++) {
-    const float an = i * 10.f * PI / 180.f;
-    const bool longt = i % 3 == 0;
-    const float r0 = longt ? 218.f : 223.f, r1 = 230.f;
-    d.p1.x = (lv_value_precise_t)lroundf(CX + r0 * cosf(an)); d.p1.y = (lv_value_precise_t)lroundf(CY + r0 * sinf(an));
-    d.p2.x = (lv_value_precise_t)lroundf(CX + r1 * cosf(an)); d.p2.y = (lv_value_precise_t)lroundf(CY + r1 * sinf(an));
-    d.color = C(longt ? COL_YEL : COL_DIM);
+  for (int b = 0; b < 360; b += 10) {
+    if (gap0 <= gap1 && b >= gap0 && b <= gap1) continue;
+    const bool b30 = b % 30 == 0;
+    int16_t x0, y0, x1, y1;
+    radar::polar(SW_RIM_R, b, x0, y0);
+    radar::polar(SW_RIM_R - (b30 ? 9 : 5), b, x1, y1);
+    d.p1.x = CX + x0; d.p1.y = CY + y0; d.p2.x = CX + x1; d.p2.y = CY + y1;
+    d.color = C(b30 ? COL_MISS : COL_DIM);
+    lv_draw_line(L, &d);
+  }  // 2 px G4 key-tag ticks at 270 (A BACK) and 090 (B SELECT).
+  d.width = 2;
+  d.color = C(CYD32_SONAR_G4);
+  const int keyBrg[2] = {90, 270};
+  for (int b : keyBrg) {
+    int16_t x0, y0, x1, y1;
+    radar::polar(SW_KEYTAG_TICK_R0, b, x0, y0);
+    radar::polar(SW_KEYTAG_TICK_R1, b, x1, y1);
+    d.p1.x = CX + x0; d.p1.y = CY + y0; d.p2.x = CX + x1; d.p2.y = CY + y1;
     lv_draw_line(L, &d);
   }
 }
@@ -248,11 +260,11 @@ void onBand(lv_event_t *e) {
       radar::polar((SW_TAB_R0 + SW_TAB_R1) / 2, (lo + hi) / 2, tx, ty);
       lv_draw_label_dsc_t ld;
       lv_draw_label_dsc_init(&ld);
-      ld.font = &lv_font_montserrat_14;
+      ld.font = &lv_font_montserrat_16;
       ld.color = C(on ? COL_BG : offText);
       ld.text = kTabTxt[i];
       ld.align = LV_TEXT_ALIGN_CENTER;
-      const lv_area_t ta = {CX + tx - 30, CY + ty - 8, CX + tx + 30, CY + ty + 8};
+      const lv_area_t ta = {CX + tx - 32, CY + ty - 9, CX + tx + 32, CY + ty + 9};
       lv_draw_label(L, &ld, &ta);
     }
   }
@@ -263,7 +275,7 @@ void refreshStatus() {
     // "W!" in red when the Wi-Fi scanner failed to start (same slot as "2.4G").
     const bool wFail = scanner::wifiFailed();
     lv_label_set_text(statusBand, wFail ? "W!" : scanner::wifiActive() ? "2.4G" : "BLE");
-    lv_obj_set_style_text_color(statusBand, C(wFail ? COL_HIT : phosphor ? CYD32_SONAR_G3 : COL_CYAN), 0);
+    lv_obj_set_style_text_color(statusBand, C(wFail ? COL_HIT : CYD32_SONAR_G3), 0);
   }
   if (statusBat) {
     char t[8];
@@ -339,29 +351,20 @@ void styleChrome() {
     if (keys) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   }
-  // Phosphor key tags: A / B in unscii_16 centred on the 2 px rim tick at
-  // 270 / 090 deg, captions in Montserrat 12. Y3-d: the original unscii_8 tags.
-  const lv_font_t *kf = phosphor ? &lv_font_unscii_16 : &lv_font_unscii_8;
-  const lv_font_t *cf = phosphor ? &lv_font_montserrat_12 : &lv_font_unscii_8;
-  lv_obj_set_style_text_font(keyA, kf, 0);
-  lv_obj_set_style_text_font(keyB, kf, 0);
-  lv_obj_set_style_text_font(keyAL, cf, 0);
-  lv_obj_set_style_text_font(keyBL, cf, 0);
-  if (phosphor) {
-    lv_obj_set_pos(keyA, 35, CY - 8);
-    lv_obj_set_pos(keyAL, 26, CY + 12);
-    lv_obj_set_pos(keyB, 423, CY - 8);
-    lv_obj_set_pos(keyBL, 400, CY + 12);
-  } else {
-    lv_obj_set_pos(keyA, 18, CY - 18);
-    lv_obj_set_pos(keyAL, 18, CY - 6);
-    lv_obj_set_pos(keyB, 430, CY - 18);
-    lv_obj_set_pos(keyBL, 398, CY - 6);
-  }
-  lv_obj_set_style_text_color(keyA, C(phosphor ? CYD32_SONAR_G4 : COL_YEL), 0);
-  lv_obj_set_style_text_color(keyAL, C(phosphor ? CYD32_SONAR_G3 : COL_YEL), 0);
-  lv_obj_set_style_text_color(keyB, C(phosphor ? CYD32_SONAR_G4 : COL_CYAN), 0);
-  lv_obj_set_style_text_color(keyBL, C(phosphor ? CYD32_SONAR_G3 : COL_CYAN), 0);
+  // Key tags as on the sonar screen, on every screen: A / B in unscii_16 G4
+  // next to the 2 px rim tick at 270 / 090 deg, captions in Montserrat 12 G3.
+  lv_obj_set_style_text_font(keyA, &lv_font_unscii_16, 0);
+  lv_obj_set_style_text_font(keyB, &lv_font_unscii_16, 0);
+  lv_obj_set_style_text_font(keyAL, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_font(keyBL, &lv_font_montserrat_12, 0);
+  lv_obj_set_pos(keyA, 35, CY - 8);
+  lv_obj_set_pos(keyAL, 26, CY + 12);
+  lv_obj_set_pos(keyB, 423, CY - 8);
+  lv_obj_set_pos(keyBL, 400, CY + 12);
+  lv_obj_set_style_text_color(keyA, C(CYD32_SONAR_G4), 0);
+  lv_obj_set_style_text_color(keyAL, C(CYD32_SONAR_G3), 0);
+  lv_obj_set_style_text_color(keyB, C(CYD32_SONAR_G4), 0);
+  lv_obj_set_style_text_color(keyBL, C(CYD32_SONAR_G3), 0);
   if (cur == ui::BOOT) {
     lv_obj_add_flag(statusBand, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(statusBat, LV_OBJ_FLAG_HIDDEN);
@@ -369,14 +372,16 @@ void styleChrome() {
     lv_obj_remove_flag(statusBand, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(statusBat, LV_OBJ_FLAG_HIDDEN);
   }
-  if (phosphor) {
-    lv_obj_set_pos(statusBand, CX - 40, 104);
-    lv_obj_set_pos(statusBat, CX + 4, 104);
+  if (phosphor || cur == ui::GRID) {
+    const int y = phosphor ? 104 : 50;
+    lv_obj_set_pos(statusBand, CX - 40, y);
+    lv_obj_set_pos(statusBat, CX + 4, y);
   } else {
     lv_obj_set_pos(statusBand, 300, 64);
     lv_obj_set_pos(statusBat, 348, 64);
   }
-  lv_obj_set_style_text_color(statusBat, C(phosphor ? CYD32_SONAR_G3 : COL_OK), 0);
+  lv_obj_set_style_text_color(statusBat, C(CYD32_SONAR_G3), 0);
+  lv_obj_invalidate(frame);
   lv_obj_invalidate(tabbar);
 }
 
@@ -495,7 +500,7 @@ void buildBoot() {
   lv_image_set_src(bootTitle, &img_cyd32_title_sw);
   lv_obj_set_pos(bootTitle, CX - img_cyd32_title_sw.header.w / 2, SW_BOOT_TITLE_Y);
   txt("DEFENSIVE SONAR", &lv_font_unscii_16, CYD32_SONAR_G4, SW_BOOT_SUBTITLE_Y);
-  txt("M5 STOPWATCH", &lv_font_montserrat_14, CYD32_SONAR_G3, 262);
+  txt("STOPWATCH", &lv_font_montserrat_14, CYD32_SONAR_G3, SW_BOOT_DEVICE_Y - 8);
   bootMsg[0] = txt("BLE --", &lv_font_montserrat_14, CYD32_SONAR_G2, 292, -82);
   bootMsg[1] = txt("WIFI --", &lv_font_montserrat_14, CYD32_SONAR_G2, 292, 0);
   bootMsg[2] = txt("RID --", &lv_font_montserrat_14, CYD32_SONAR_G2, 292, 82);
@@ -603,12 +608,15 @@ void selectCell(int c, int r) {
     if (slot % 10 == c && slot / 10 == r) { selEnt = e[i]; haveSel = true; break; }
   }
   if (haveSel && gridPlateLbl) {
-    char id[9], line[64];
-    privacy::idToStr(selEnt.id, id);
-    const char *k = selEnt.kind == det::DRONE ? "DRONE" : selEnt.kind == det::BLE ? "BLE" : "WIFI";
-    snprintf(line, sizeof line, "%s %s\n%d dBm  ch%u", cell, k, selEnt.rssi, selEnt.channel);
+    char line[48];
+    const bool drone = selEnt.kind == det::DRONE;
+    const char *k = drone ? "DRONE" : selEnt.kind == det::BLE ? "BLE" : "WIFI";
+    snprintf(line, sizeof line, "%s  %s", cell, k);
     lv_label_set_text(gridPlateLbl, line);
-    lv_obj_set_style_border_color(gridPlate, C(selEnt.kind == det::DRONE ? COL_DRONE : COL_YEL), 0);
+    lv_obj_set_style_text_color(gridPlateLbl, C(drone ? COL_DRONE : COL_YEL), 0);
+    if (selEnt.kind == det::WIFI) snprintf(line, sizeof line, "%dDBM  CH %u  2.4G", selEnt.rssi, selEnt.channel);
+    else snprintf(line, sizeof line, "%dDBM  %s", selEnt.rssi, drone ? "RID" : "BLE");
+    lv_label_set_text(gridPlateLbl2, line);
     lv_obj_remove_flag(gridPlate, LV_OBJ_FLAG_HIDDEN);
   } else if (gridPlate) {
     lv_obj_add_flag(gridPlate, LV_OBJ_FLAG_HIDDEN);
@@ -622,35 +630,85 @@ void onGridTouch(lv_event_t *e) {
   selectCell((p.x - a.x1) / kCw, (p.y - a.y1) / kCh);
 }
 void onPlate(lv_event_t *) { if (haveSel) ui::show(ui::DETAILS); }
+// Grid lines: G2 inside, the G3 outer frame is the object's border.
+void drawGridLines(lv_event_t *e) {
+  lv_obj_t *g = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
+  lv_layer_t *L = lv_event_get_layer(e);
+  lv_area_t a;
+  lv_obj_get_coords(g, &a);
+  lv_draw_line_dsc_t d;
+  lv_draw_line_dsc_init(&d);
+  d.color = C(COL_DIM);
+  d.width = 1;
+  for (int c = 1; c < 10; c++) {
+    d.p1.x = d.p2.x = a.x1 + c * kCw; d.p1.y = a.y1 + 1; d.p2.y = a.y2 - 1;
+    lv_draw_line(L, &d);
+  }
+  for (int r = 1; r < 8; r++) {
+    d.p1.y = d.p2.y = a.y1 + r * kCh; d.p1.x = a.x1 + 1; d.p2.x = a.x2 - 1;
+    lv_draw_line(L, &d);
+  }
+}
+// 8 px chamfer on the top-left and bottom-right corners of the info plate.
+void drawChamfer(lv_event_t *e) {
+  lv_obj_t *o = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
+  lv_layer_t *L = lv_event_get_layer(e);
+  lv_area_t a;
+  lv_obj_get_coords(o, &a);
+  const int k = 8;
+  lv_draw_triangle_dsc_t t;
+  lv_draw_triangle_dsc_init(&t);
+  t.bg_color = C(COL_BG);
+  t.bg_opa = LV_OPA_COVER;
+  t.p[0].x = a.x1; t.p[0].y = a.y1; t.p[1].x = a.x1 + k + 1; t.p[1].y = a.y1; t.p[2].x = a.x1; t.p[2].y = a.y1 + k + 1;
+  lv_draw_triangle(L, &t);
+  t.p[0].x = a.x2 + 1; t.p[0].y = a.y2 + 1; t.p[1].x = a.x2 - k; t.p[1].y = a.y2 + 1; t.p[2].x = a.x2 + 1; t.p[2].y = a.y2 - k;
+  lv_draw_triangle(L, &t);
+  lv_draw_line_dsc_t d;
+  lv_draw_line_dsc_init(&d);
+  d.color = C(COL_DIM);
+  d.width = 1;
+  d.p1.x = a.x1; d.p1.y = a.y1 + k; d.p2.x = a.x1 + k; d.p2.y = a.y1;
+  lv_draw_line(L, &d);
+  d.p1.x = a.x2; d.p1.y = a.y2 - k; d.p2.x = a.x2 - k; d.p2.y = a.y2;
+  lv_draw_line(L, &d);
+}
 void buildGrid() {
-  label(content, "GRID A-J / 1-8", &lv_font_unscii_8, COL_YEL);
-  lv_obj_align(lv_obj_get_child(content, -1), LV_ALIGN_TOP_MID, 0, 40);
-  label(content, "X HIT   . MISS", &lv_font_unscii_8, COL_DIM);
-  lv_obj_align(lv_obj_get_child(content, -1), LV_ALIGN_TOP_MID, 0, 56);
+  txt("GRID A-J / 1-8", &lv_font_montserrat_14, COL_YEL, 30);
+  txt("X HIT   . MISS", &lv_font_montserrat_12, COL_DIM, 330);
   for (int c = 0; c < 10; c++) {
     char s[2] = {(char)('A' + c), 0};
-    lv_obj_set_pos(label(content, s, &lv_font_unscii_8, COL_YEL), kGx + c * kCw + 8, kGy - 14);
+    lv_obj_set_pos(label(content, s, &lv_font_unscii_16, COL_YEL), kGx + c * kCw + 6, kGy - 18);
   }
-  lv_obj_t *g = box(content, kGx, kGy, 10 * kCw, 8 * kCh, COL_BG);
-  lv_obj_set_style_border_color(g, C(COL_YEL), 0);
-  lv_obj_set_style_border_width(g, 2, 0);
+  lv_obj_t *g = box(content, kGx, kGy, 10 * kCw + 1, 8 * kCh + 1, COL_BG);
+  lv_obj_set_style_border_color(g, C(COL_MISS), 0);
+  lv_obj_set_style_border_width(g, 1, 0);
   lv_obj_add_flag(g, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(g, onGridTouch, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(g, drawGridLines, LV_EVENT_DRAW_MAIN, nullptr);
   for (int r = 0; r < 8; r++) {
     char s[2] = {(char)('1' + r), 0};
-    lv_obj_set_pos(label(content, s, &lv_font_unscii_8, COL_YEL), kGx - 16, kGy + r * kCh + 4);
+    lv_obj_set_pos(label(content, s, &lv_font_unscii_16, COL_YEL), kGx - 16, kGy + r * kCh + 2);
     for (int c = 0; c < 10; c++) {
-      gridMarks[r * 10 + c] = label(g, ".", &lv_font_unscii_8, COL_MISS);
-      lv_obj_set_pos(gridMarks[r * 10 + c], c * kCw + 8, r * kCh + 4);
+      lv_obj_t *m = label(g, ".", &lv_font_unscii_16, COL_MISS);
+      lv_obj_set_pos(m, c * kCw + 1, r * kCh + 1);
+      lv_obj_set_size(m, kCw - 1, kCh - 1);
+      lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_pad_top(m, 2, 0);
+      lv_obj_set_style_bg_color(m, lv_color_mix(C(COL_DRONE), C(COL_BG), 56), 0);  // 22 % DRONE cell
+      gridMarks[r * 10 + c] = m;
     }
   }
-  gridPlate = box(content, 133, 286, 200, 48, COL_BG);  // clear of the tab band
-  lv_obj_set_style_border_width(gridPlate, 2, 0);
-  lv_obj_set_style_border_color(gridPlate, C(COL_HIT), 0);
+  gridPlate = box(content, CX - 100, SW_GRID_PLATE_Y0, 200, SW_GRID_PLATE_H, COL_GRID);
+  lv_obj_set_style_border_width(gridPlate, 1, 0);
+  lv_obj_set_style_border_color(gridPlate, C(COL_DIM), 0);
   lv_obj_add_flag(gridPlate, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(gridPlate, onPlate, LV_EVENT_CLICKED, nullptr);
-  gridPlateLbl = label(gridPlate, "", &lv_font_unscii_8, COL_TEXT);
-  lv_obj_center(gridPlateLbl);
+  lv_obj_add_event_cb(gridPlate, drawChamfer, LV_EVENT_DRAW_POST, nullptr);
+  gridPlateLbl = label(gridPlate, "", &lv_font_montserrat_14, COL_YEL);
+  lv_obj_align(gridPlateLbl, LV_ALIGN_TOP_MID, 0, 4);
+  gridPlateLbl2 = label(gridPlate, "", &lv_font_montserrat_12, COL_YEL);
+  lv_obj_align(gridPlateLbl2, LV_ALIGN_TOP_MID, 0, 22);
   lv_obj_add_flag(gridPlate, LV_OBJ_FLAG_HIDDEN);
 }
 void refreshGrid() {
@@ -664,6 +722,7 @@ void refreshGrid() {
   for (int i = 0; i < 80; i++) {
     lv_label_set_text(gridMarks[i], mark[i] ? "X" : ".");
     lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? COL_DRONE : mark[i] ? COL_YEL : COL_MISS), 0);
+    lv_obj_set_style_bg_opa(gridMarks[i], mark[i] == 2 ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
   }
 }
 
@@ -825,7 +884,7 @@ void buildUpdateConfirm() {
                       &lv_font_unscii_8, COL_TEXT);
   lv_obj_set_style_text_align(s, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(s, LV_ALIGN_CENTER, 0, -20);
-  button(content, "Start update mode", CX - 100, 286, 200, 48, onStartUpdate, nullptr, COL_OK);
+  button(content, "Start update mode", CX - 110, 320, 220, 48, onStartUpdate, nullptr, COL_OK);
 }
 void buildOta() {
   otaConfirm = nullptr;
@@ -1324,15 +1383,15 @@ void onSig(lv_event_t *) { ui::show(ui::ABOUT); }
 void buildCounters() {
   label(content, "COUNTERS W / B / R", &lv_font_unscii_8, COL_YEL);
   lv_obj_align(lv_obj_get_child(content, -1), LV_ALIGN_TOP_MID, 0, 40);
-  cntArc[0] = mkArc(content, CX - 140, CY - 140, 280, 150, 270, COL_TRACK, COL_CYAN, 14);
-  cntArc[1] = mkArc(content, CX - 140, CY - 140, 280, 270, 30, COL_TRACK, COL_YEL, 14);
-  cntArc[2] = mkArc(content, CX - 140, CY - 140, 280, 30, 150, COL_TRACK, COL_DRONE, 14);
+  cntArc[0] = mkArc(content, CX - 170, CY - 170, 340, 150, 270, COL_TRACK, COL_CYAN, 14);
+  cntArc[1] = mkArc(content, CX - 170, CY - 170, 340, 270, 30, COL_TRACK, COL_YEL, 14);
+  cntArc[2] = mkArc(content, CX - 170, CY - 170, 340, 30, 150, COL_TRACK, COL_DRONE, 14);
   cntNum[0] = label(content, "0000", &lv_font_montserrat_24, COL_CYAN);
-  lv_obj_set_pos(cntNum[0], 118, 190);  // gauges at r 126-140, clear of the tab band
+  lv_obj_set_pos(cntNum[0], 90, 190);
   label(content, "AP", &lv_font_unscii_8, COL_MISS);
-  lv_obj_set_pos(lv_obj_get_child(content, -1), 138, 222);
+  lv_obj_set_pos(lv_obj_get_child(content, -1), 110, 222);
   cntNum[1] = label(content, "0000", &lv_font_montserrat_24, COL_YEL);
-  lv_obj_set_pos(cntNum[1], 288, 190);
+  lv_obj_set_pos(cntNum[1], 290, 190);
   label(content, "BEACONS", &lv_font_unscii_8, COL_MISS);
   lv_obj_set_pos(lv_obj_get_child(content, -1), 286, 222);
   cntNum[2] = label(content, "0000", &lv_font_montserrat_24, COL_DRONE);
@@ -1352,7 +1411,7 @@ void buildCounters() {
   label(content, "BLE", &lv_font_unscii_8, COL_YEL);
   lv_obj_set_pos(lv_obj_get_child(content, -1), 360, 150);
   label(content, "RID", &lv_font_unscii_8, COL_DRONE);
-  lv_obj_align(lv_obj_get_child(content, -1), LV_ALIGN_CENTER, 0, 56);
+  lv_obj_align(lv_obj_get_child(content, -1), LV_ALIGN_CENTER, 0, 160);
 }
 void refreshCounters() {
   const det::Counts c = det::counts();
@@ -1424,7 +1483,7 @@ void clearContent() {
   if (fxTimer) { lv_timer_delete(fxTimer); fxTimer = nullptr; }
   radarObj = bootLogo = bootTitle = scanLine = bootLoad = nullptr;
   hudW = hudB = hudR = hudSel = hudSel2 = wdRecDot = nullptr;
-  gridPlate = gridPlateLbl = detBody = nullptr;
+  gridPlate = gridPlateLbl = gridPlateLbl2 = detBody = nullptr;
   otaQr = otaInfo = otaMsg = otaPct = otaConfirm = nullptr;
   wdTimerLbl = wdRecLbl = creaImg = creaInfo = flash = nullptr;
   memset(bootMsg, 0, sizeof bootMsg);
@@ -1442,8 +1501,9 @@ void show(Screen s) {
   clearContent();
   cur = s;
   phosphor = s == BOOT || s == SONAR || s == WARDRIVING;
-  // Curved 4-tab band on every screen except boot, OTA and the unsigned confirm.
-  const bool tabs = s != BOOT && s != OTA && s != UNSIGNED_CONFIRM;
+  // Curved 4-tab band: the standard nav on the screens with the 4-tab menu
+  // (SONAR, GRID). Modal screens keep A = BACK (design README section 7).
+  const bool tabs = s == SONAR || s == GRID;
   setTabs(tabs);
   styleChrome();
   switch (s) {
