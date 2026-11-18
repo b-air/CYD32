@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2026 CYD32 contributors
+// Procedural green-phosphor PPI radar (v9 sonar theme), shared by the CYD and
+// StopWatch UIs. One LVGL object draws everything in LV_EVENT_DRAW_MAIN: range
+// rings, rim, 5/10/30 deg ticks, bearing labels, crosshair, A-J letters, the
+// 40 deg / 8-step sweep wedge with its leading line, echoes with level decay,
+// the corner-bracket target box and an optional rim progress arc. No child
+// objects, no opacity and no transform on the object, so LVGL never needs an
+// intermediate layer for it. A 50 ms timer advances the sweep (3.0 s per turn)
+// and invalidates only the old/new wedge bounding box plus echoes whose decay
+// level changed.
+#pragma once
+#include <stdint.h>
+#include "lvgl.h"
+
+namespace radar {
+enum Kind : uint8_t { WIFI = 0, BLE = 1, DRONE = 2 };
+
+struct Style {
+  int16_t cx, cy;               // centre, relative to the widget
+  int16_t rings[3];             // inner range rings (0 = unused)
+  int16_t rim;                  // rim radius; ticks start here and point outward
+  uint16_t bg, ringCol;         // RGB565
+  const uint16_t *wedge;        // 8 colours pre-blended over bg (theme header)
+  const uint16_t *droneRamp;    // 4 drone core colours L1..L4 (theme header)
+  uint8_t rimW;
+  uint8_t tick5, tick10, tick30;  // tick lengths in px (0 = no ticks)
+  int16_t skip0, skip1;         // no ticks for bearings in [skip0, skip1] (tab band); skip0 > skip1 = none
+  int16_t crossR;               // crosshair half length (0 = none)
+  int16_t bearR, bearRmax;      // bearing labels (bearR 0 = none); pulled in so the far corner <= bearRmax
+  const lv_font_t *bearFont;
+  uint16_t bearMaj, bearMin;    // colours of 000/090/180/270 and of the others
+  uint16_t bearSkip;            // bit i set: no label at i * 30 deg
+  int16_t colPitchX10, rowPitch;  // grid cell pitch (A-J letters drawn when lettersFont != nullptr)
+  const lv_font_t *lettersFont;
+  int16_t lettersDy;            // top of the A-J letters below the centre
+  const lv_font_t *idFont;      // contact labels
+  int16_t echoR, boxSize;
+  uint8_t boxW, lineW, underW;  // target box, sweep line and its G3 underlay
+  bool sweep;                   // animated sweep (false: static scope, echoes at L3)
+  bool keyTicks;                // 2 px G4 marks at 090 / 270 (StopWatch key tags)
+};
+
+struct Contact {
+  int16_t dx, dy;   // from the centre
+  uint8_t kind;     // Kind
+  uint8_t r;        // core radius, 0 = style echoR
+  char id[8];       // label ("" = none)
+  uint32_t seed;    // stable hash (sub-circle offsets)
+};
+
+constexpr int kMaxContacts = 32;
+
+lv_obj_t *create(lv_obj_t *parent, int x, int y, int w, int h, const Style &s);
+// sel: index of the contact that gets the target box, -1 = none.
+void setContacts(lv_obj_t *o, const Contact *c, int n, int sel);
+void setProgress(lv_obj_t *o, int pct);  // rim progress arc, clockwise from 000; < 0 hides it
+// Grid cell (col 0..9 = A..J, row 0..7 = 1..8) to an offset from the centre,
+// pulled inside the rim. Same cells as the GRID screen.
+void cellOffset(const Style &s, int col, int row, int16_t &dx, int16_t &dy);
+void polar(int r, int brgDeg, int16_t &dx, int16_t &dy);  // bearing 0 = up, clockwise
+int bearingOf(int dx, int dy);                            // 0..359
+}  // namespace radar

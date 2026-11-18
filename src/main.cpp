@@ -14,10 +14,12 @@
 #include "ui.h"
 #include "ui_layout.h"
 #include "boot_log.h"
+#include "ota_rollback.h"
+#include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include "cyd32_build_gen.h"
 #ifdef CYD32_HW_M5STACK_STOPWATCH
 #include "wardriving.h"
-#include <esp_heap_caps.h>
 #endif
 
 // Keep the new image in PENDING_VERIFY until our own self-test passes, so the
@@ -26,7 +28,9 @@ extern "C" bool verifyRollbackLater() { return true; }
 
 namespace {
 #ifdef CYD32_HW_M5STACK_STOPWATCH
-constexpr int kBufLines = 233;  // half-height; allocated from PSRAM
+// 40 lines (37 KB) from internal DMA-capable SRAM: faster to render into than
+// PSRAM. Even, so every band starts on an even row (CO5300 needs even bounds).
+constexpr int kBufLines = 40;
 static uint8_t *drawBuf = nullptr;
 static size_t drawBufSz = 0;
 #else
@@ -42,10 +46,54 @@ bool otaMode = false, unsignedArmed = false, selfTestDone = false;
 uint32_t bootMs = 0, lastRefresh = 0;
 
 uint32_t tick() { return millis(); }
+
+// First-frame diagnostics: the first few flushes are logged, and a one-shot
+// timer reports (and rolls back an unverified OTA image) if the first frame
+// has not completed after kFirstFrameTimeoutUs.
+constexpr uint32_t kFlushLogs = 3;
+constexpr uint64_t kFirstFrameTimeoutUs = 5 * 1000 * 1000;
+volatile uint32_t flushCount = 0;
+volatile bool firstFrameDone = false;
+esp_timer_handle_t firstFrameTimer = nullptr;
+
 void flushCb(lv_display_t *d, const lv_area_t *a, uint8_t *px) {
-  hw::flush(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, px);
-  lv_display_flush_ready(d);
+  const uint32_t n = ++flushCount;
+  const int32_t w = a->x2 - a->x1 + 1, h = a->y2 - a->y1 + 1;
+  if (n <= kFlushLogs) BOOT_LOG("flush #%u x=%ld y=%ld %ldx%ld ...", (unsigned)n, (long)a->x1, (long)a->y1, (long)w, (long)h);
+  if (px != nullptr && w > 0 && h > 0) hw::flush(a->x1, a->y1, w, h, px);
+  if (n <= kFlushLogs) BOOT_LOG("flush #%u ok", (unsigned)n);
+  lv_display_flush_ready(d);  // on every path, or LVGL waits forever
 }
+void firstFrameTimeout(void *) {
+  if (firstFrameDone) return;
+  // Runs in the esp_timer task while the main loop is stuck inside LVGL.
+  BOOT_LOG("first frame NOT done after %u s: %u flushes, internal free=%u, psram free=%u",
+           (unsigned)(kFirstFrameTimeoutUs / 1000000), (unsigned)flushCount,
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  ota_rollback::ifPendingVerify("first frame hang", 0);
+}
+void armFirstFrameTimer() {
+  const esp_timer_create_args_t args = {firstFrameTimeout, nullptr, ESP_TIMER_TASK, "first_frame", false};
+  if (esp_timer_create(&args, &firstFrameTimer) == ESP_OK) esp_timer_start_once(firstFrameTimer, kFirstFrameTimeoutUs);
+}
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+// The CO5300 needs even start coordinates and even sizes: widen every
+// invalidated area to even x1/y1 and odd x2/y2 (x2, y2 are inclusive).
+void evenAreaCb(lv_event_t *e) {
+  lv_area_t *a = static_cast<lv_area_t *>(lv_event_get_param(e));
+  a->x1 &= ~1; a->y1 &= ~1; a->x2 |= 1; a->y2 |= 1;
+}
+// LVGL's printf goes to UART0; the StopWatch console is USB CDC. A failing
+// render retries in a tight loop, so keep at most 10 lines per second.
+void lvLogCb(lv_log_level_t, const char *buf) {
+  static uint32_t windowMs = 0, lines = 0;
+  const uint32_t now = millis();
+  if (now - windowMs >= 1000) { windowMs = now; lines = 0; }
+  if (++lines > 10) return;
+  Serial.print("[lvgl] ");
+  Serial.print(buf);
+}
+#endif
 void touchCb(lv_indev_t *, lv_indev_data_t *data) {
   int16_t x, y;
   if (hw::touch(x, y)) { data->point.x = x; data->point.y = y; data->state = LV_INDEV_STATE_PRESSED; }
@@ -84,8 +132,14 @@ void setup() {
 #ifdef CYD32_HW_M5STACK_STOPWATCH
   BOOT_STEP("wardriving", wardriving::begin());
   drawBufSz = (size_t)CYD32_SCREEN_W * kBufLines * 2;
-  drawBuf = (uint8_t *)heap_caps_malloc(drawBufSz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (!drawBuf) drawBuf = (uint8_t *)malloc(drawBufSz);
+  drawBuf = (uint8_t *)heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, drawBufSz, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  const char *where = "internal DMA";
+  if (!drawBuf) {
+    // Fallback: PSRAM is fine too, hw::flush() copies with the CPU (no DMA from this buffer).
+    drawBuf = (uint8_t *)heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, drawBufSz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    where = "PSRAM";
+  }
+  BOOT_LOG("draw buffer in %s, %d lines", where, kBufLines);
   buf = drawBuf;
   const size_t bufSz = drawBufSz;
 #else
@@ -105,16 +159,26 @@ void setup() {
   }
   BOOT_STEP("lv_init", lv_init());
   lv_tick_set_cb(tick);
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+  lv_log_register_print_cb(lvLogCb);
+#endif
   lv_display_t *disp = nullptr;
   BOOT_STEP("lv_display_create", disp = lv_display_create(CYD32_SCREEN_W, CYD32_SCREEN_H));
   lv_display_set_flush_cb(disp, flushCb);
+#ifdef CYD32_HW_M5STACK_STOPWATCH
+  lv_display_add_event_cb(disp, evenAreaCb, LV_EVENT_INVALIDATE_AREA, nullptr);
+#endif
   BOOT_STEP("lv_display_set_buffers",
             lv_display_set_buffers(disp, buf, nullptr, bufSz, LV_DISPLAY_RENDER_MODE_PARTIAL));
   lv_indev_t *in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, touchCb);
   BOOT_STEP("ui", ui::begin());
-  BOOT_STEP("first frame", pump(1));
+  armFirstFrameTimer();
+  BOOT_STEP("first frame", lv_refr_now(disp));
+  firstFrameDone = true;
+  if (firstFrameTimer) { esp_timer_stop(firstFrameTimer); esp_timer_delete(firstFrameTimer); firstFrameTimer = nullptr; }
+  BOOT_LOG("first frame: %u flushes", (unsigned)flushCount);
 
   // Physical gesture for the one-shot unsigned mode: hold the board button
   // (BOOT / GPIO0 on CYD, KEYA / GPIO2 on StopWatch) for 3 s during the splash.
@@ -138,7 +202,7 @@ void setup() {
     ui::setUnsignedBanner(unsignedArmed);
   }
   BOOT_STEP("scanner", scanner::begin());
-  BOOT_STEP("ui sonar", ui::show(ui::SONAR));
+  BOOT_STEP("ui home", ui::show(ui::HOME));
   BOOT_LOG("setup done in %lu ms, heap free=%u", (unsigned long)(millis() - bootMs), (unsigned)ESP.getFreeHeap());
 }
 

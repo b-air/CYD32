@@ -14,10 +14,17 @@
 #define LV_DEF_REFR_PERIOD 33
 #define LV_DPI_DEF 130
 #define LV_USE_OS LV_OS_NONE
-#define LV_DRAW_SW_SUPPORT_I4 1
+#define LV_DRAW_SW_SUPPORT_I4 1   /* v9 glitch logo / title tiles are I4 */
 #define LV_USE_LOG 1
+#if defined(CYD32_HW_M5STACK_STOPWATCH)
+/* printf goes to UART0, not the USB CDC console: main.cpp registers a print
+   callback to Serial instead. WARN shows "Allocating layer buffer failed". */
+#define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+#define LV_LOG_PRINTF 0
+#else
 #define LV_LOG_LEVEL LV_LOG_LEVEL_ERROR
 #define LV_LOG_PRINTF 1
+#endif
 #define LV_ASSERT_HANDLER_INCLUDE "lv_assert_hook.h"
 #define LV_ASSERT_HANDLER cyd32_lv_assert_fail(__FILE__, __LINE__);
 #define LV_USE_ASSERT_NULL 1
@@ -28,6 +35,7 @@
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_UNSCII_8 1
+#define LV_FONT_UNSCII_16 1   /* v9 sonar: bearings, IDs, counts */
 #define LV_FONT_DEFAULT &lv_font_montserrat_12
 #define LV_USE_QRCODE 1
 #define LV_USE_THEME_DEFAULT 1
