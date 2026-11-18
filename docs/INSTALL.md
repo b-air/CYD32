@@ -2,13 +2,17 @@
 <!-- SPDX-FileCopyrightText: 2026 CYD32 contributors -->
 # CYD32 installation guide — CYD and M5Stack StopWatch
 
-**Release covered: `v0.2.0-test1`** (built from commit `d79be3f4d7e4`, published 13 Nov 2026, 17:00 UTC).
+**Release covered: `v0.2.0-test3`** (pre-release, built from commit `c9042fc8dafe`, published 18 Nov 2026, 15:52 Berlin time). **Unsigned build: USB install only.**
 
-> ℹ️ **`v0.2.0-test3` RELEASE PENDING.** Sections 2.4, 2.5, 3.4 and 3.5 already describe the `v0.2.0-test3` firmware (phosphor sonar UI, StopWatch first-frame fix, Wi-Fi receive fix, CYD touch fix). The `v0.2.0-test3` release is **not published yet**. All file links, SHA-256 hashes, the `d79be3f4d7e4` commit and the `*-signed.bin` links below are still those of **`v0.2.0-test1`**. They will be updated when `v0.2.0-test3` is published; its hashes come from the release workflow after the merge and tag. Like `v0.2.0-test2`, `v0.2.0-test3` will be **unsigned** (no `*-signed.bin`).
+> ⚠️ **HARDWARE TEST STATUS.** `v0.2.0-test3` is a test build, **not tested on hardware yet** (neither board). **CYD:** it also contains the boot-hang fix of `v0.2.0-test2`, which awaits a hardware test. **StopWatch:** not tested on hardware yet. Follow these steps to test it, and expect problems.
 
-> ⚠️ **HARDWARE TEST STATUS.** `v0.2.0-test1` is a test build. **CYD:** the hardware test on 18 Nov 2026 found a boot hang (black screen with the backlight on, see the known issue below); the fix awaits a hardware test. **StopWatch:** not tested on hardware yet. Follow these steps to test it, and expect problems.
+> ⚠️ **UNSIGNED IMAGES.** `v0.2.0-test3` has **no `-signed.bin` files**: its firmware files are for the **USB install only**. Signed images come back before the public phase, for the OTA tests. Section 4 (OTA) applies once a release with signed files exists.
 
-> ⚠️ **KNOWN ISSUE IN `v0.2.0-test1` (CYD only).** On the first hardware test (18 Nov 2026), the CYD's backlight came on but the screen stayed **black**, and the serial console stopped after the line `[E][Preferences.cpp:503] getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND`. The flash itself worked (the bootloader and the application start). The firmware stops while it sets up the display: LVGL requires a 4-byte-aligned draw buffer, and in this build the buffer sits at an odd address, so LVGL halts silently. The fix (and a serial line for each start-up step) is ready for the next test build. The StopWatch build is not affected by this bug. The flashing steps below stay the same for the next build; only the file hashes will change.
+> ℹ️ **WHAT `v0.2.0-test3` CHANGES.**
+> - **StopWatch black screen fixed.** With `v0.2.0-test2` the StopWatch screen stayed black: the round UI needed extra LVGL draw layers that could not be allocated, so the first frame was never drawn. The UI now draws without them, and the console prints `flush #1 ...` / `flush #1 ok` and `first frame: <n> flushes` (3.5).
+> - **Wi-Fi reception fixed.** The scanner never actually started the Wi-Fi driver, so no Wi-Fi frames were received. It now starts it receive-only (it never connects and never transmits outside OTA update mode). If it fails, the header shows **`W!`** and BLE keeps working.
+> - **CYD touch fixed.** `v0.2.0-test2` mirrored the X axis: a tap on the left opened the tab on the right.
+> - **New look.** Green phosphor sonar on both boards (drones are the only yellow elements); the StopWatch boot screen shows the M5Stack logo. The first screen after boot is the **creature** (an egg that hatches, then grows).
 
 This guide explains, for each device:
 
@@ -22,7 +26,7 @@ This guide explains, for each device:
 
 ### 0.1 Links and access
 
-- Release page: <https://github.com/b-air/CYD32/releases/tag/v0.2.0-test1>
+- Release page: <https://github.com/b-air/CYD32/releases/tag/v0.2.0-test3>
 - The firmware repository is **private**. Every `github.com/b-air/CYD32/...` link in this guide only works when you are **signed in to GitHub with an account that has access** to the repository. Otherwise GitHub shows **404 – Not Found**, even though the file exists.
 - Web flasher (official Espressif tool): <https://espressif.github.io/esptool-js/>
 
@@ -31,9 +35,9 @@ This guide explains, for each device:
 | Use | CYD32 (ESP32-2432S028) | M5Stack StopWatch (C152) |
 |---|---|---|
 | First install over USB (4 files, all required) | `bootloader-cyd.bin`, `partitions-cyd.bin`, `boot_app0-cyd.bin`, `firmware-cyd.bin` | `bootloader-m5stack-stopwatch.bin`, `partitions-m5stack-stopwatch.bin`, `boot_app0-m5stack-stopwatch.bin`, `firmware-m5stack-stopwatch.bin` |
-| Later updates over Wi-Fi (OTA, from the iPhone) | `firmware-cyd-signed.bin` | `firmware-m5stack-stopwatch-signed.bin` |
+| Later updates over Wi-Fi (OTA, from the iPhone) | not in `v0.2.0-test3` (no signed file) | not in `v0.2.0-test3` (no signed file) |
 
-- The `*-signed.bin` files are signed by the maintainer after the release is built, and are added to the release separately. **Both are on the release** (uploaded 13 Nov 2026, 18:11 UTC). The release `SHA256SUMS` lists them; the SHA-256 values in this guide come from that file and match GitHub's own checksums.
+- **No signed files in this release.** OTA updates need a `*-signed.bin` file signed by the maintainer. `v0.2.0-test3` is an unsigned test build, so it has none; signed images come back before the public phase, for the OTA tests. The SHA-256 values in this guide come from the release `SHA256SUMS` and match GitHub's own checksums.
 - **There is no merged image.** The release has no single "merged" `.bin`, for either device. Earlier versions of this guide said the StopWatch's first install used "a merged image at `0x0`", but no such file is produced by the release workflow. You flash the **four separate files** at the offsets given below. Writing those four files is the same as writing a merged image.
 - Never use a file made for the other device.
 
@@ -45,7 +49,7 @@ This guide explains, for each device:
   - CYD: its USB-to-serial chip is a **CH340** (some batches use a **CP210x**). Windows and older macOS may need the driver: CH340 <https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all>; for a CP210x, the Silicon Labs CP210x USB to UART VCP driver (from the chip maker, Silicon Labs). Linux has both drivers built in.
   - StopWatch: none. The ESP32-S3 has a built-in USB port that every current OS recognises.
 - **The 4 first-install files** for your device, downloaded to the computer (section 1).
-- For later updates: an iPhone with Safari, and the signed `.bin` saved in the **Files** app.
+- For later OTA updates (once a release has signed files): an iPhone with Safari, and the signed `.bin` saved in the **Files** app.
 
 ### 0.4 Flash settings at a glance (verified)
 
@@ -73,9 +77,9 @@ Sign in to GitHub in your browser first. Then open the release page and download
 
 ### 1.2 Check the SHA-256 (no command line needed)
 
-The release has a `SHA256SUMS` file: <https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/SHA256SUMS>. It lists every file in this guide, including the two `*-signed.bin` files. Use the values in sections 2.1 and 3.1, or check against that file.
+The release has a `SHA256SUMS` file: <https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/SHA256SUMS>. It lists every file in this guide (the eight `.bin` files, the source archive and the SBOM). Use the values in sections 2.1 and 3.1, or check against that file.
 
-**Option A – on the GitHub page (simplest).** On the release page, GitHub shows a `sha256:` checksum next to each asset in **Assets**. GitHub computes it when the file is uploaded. Check that it matches the value in the tables in sections 2.1 and 3.1 (every row, signed and unsigned, comes from the release `SHA256SUMS`; all were checked against GitHub's own checksums). This proves that the file on GitHub is the one the release built. It does not check the copy on your computer.
+**Option A – on the GitHub page (simplest).** On the release page, GitHub shows a `sha256:` checksum next to each asset in **Assets**. GitHub computes it when the file is uploaded. Check that it matches the value in the tables in sections 2.1 and 3.1 (every row comes from the release `SHA256SUMS`; all were checked against GitHub's own checksums). This proves that the file on GitHub is the one the release built. It does not check the copy on your computer.
 
 **Option B – check the copy on your computer (optional, built-in tools).**
 - macOS: open Terminal in the download folder and run `shasum -a 256 firmware-cyd.bin` (do the same for each file).
@@ -85,10 +89,10 @@ The release has a `SHA256SUMS` file: <https://github.com/b-air/CYD32/releases/do
 **Option C – command line (Linux or macOS).** `gh` must be signed in with an account that can read `b-air/CYD32` (check with `gh auth status`). Run as a normal user:
 ```bash
 mkdir -p ~/cyd32-check && cd ~/cyd32-check
-gh release download v0.2.0-test1 -R b-air/CYD32 -p '*.bin' -p SHA256SUMS --clobber
+gh release download v0.2.0-test3 -R b-air/CYD32 -p '*.bin' -p SHA256SUMS --clobber
 grep '\.bin$' SHA256SUMS | sha256sum -c
 ```
-Every line of the `sha256sum -c` output must end in `OK`. The `grep` keeps only the `.bin` lines, because `SHA256SUMS` also lists the source archive and the SBOM, which this command does not download. If a signed or unsigned `.bin` is missing, the check fails. This checks the files downloaded into `~/cyd32-check`. On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`.
+Every line of the `sha256sum -c` output must end in `OK`. The `grep` keeps only the `.bin` lines, because `SHA256SUMS` also lists the source archive and the SBOM, which this command does not download. If one of the eight `.bin` files is missing, the check fails. This checks the files downloaded into `~/cyd32-check`. On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`.
 
 **If one value does not match, do not flash that file.**
 
@@ -104,12 +108,12 @@ Enter these exact four rows in the web flasher. The offsets were checked against
 
 | Flash Address | File (direct link) | SHA-256 |
 |---|---|---|
-| `0x1000` | [bootloader-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/bootloader-cyd.bin) | `3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8` |
-| `0x8000` | [partitions-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/partitions-cyd.bin) | `82e1bb3fd187861bda39b46fd9a9e76fd90037e4cc21b8fecf6fa9db3fe286e6` |
-| `0xe000` | [boot_app0-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/boot_app0-cyd.bin) | `f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0` |
-| `0x10000` | [firmware-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/firmware-cyd.bin) | `a5f007d8ef769584c39b37202606a7e30c2b1b045865839094bfec8ae55eb480` |
+| `0x1000` | [bootloader-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/bootloader-cyd.bin) | `3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8` |
+| `0x8000` | [partitions-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/partitions-cyd.bin) | `82e1bb3fd187861bda39b46fd9a9e76fd90037e4cc21b8fecf6fa9db3fe286e6` |
+| `0xe000` | [boot_app0-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/boot_app0-cyd.bin) | `f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0` |
+| `0x10000` | [firmware-cyd.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/firmware-cyd.bin) | `1d1d25472840316c99087d024b191e94a1972abe9bf5a6fe25e5efed58cbc2e7` |
 
-For later OTA updates: [firmware-cyd-signed.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/firmware-cyd-signed.bin), SHA-256 `eee80df599e5c3175b810ad4904f6ede4898822b2d3214b90ede0175f68d354f` (from the release `SHA256SUMS`).
+For later OTA updates: no signed file in `v0.2.0-test3` (unsigned test build).
 
 Important: on the CYD (ESP32) the bootloader goes at **`0x1000`**, not `0x0`. Set the flasher's **Flash Mode `dio`**, **Flash Frequency `40m`** and **Flash Size `4MB`** (verified in the image headers, see 0.4).
 
@@ -143,7 +147,7 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 8. The first row already exists, with **Flash Address** `0x1000`. Keep `0x1000`. Click its file box and choose `bootloader-cyd.bin`.
 9. Click **Add File**. A new row appears; **its address also starts at `0x1000`**: change it to **`0x8000`**, then choose `partitions-cyd.bin`.
 10. Click **Add File**, change the address to **`0xe000`**, and choose `boot_app0-cyd.bin`.
-11. Click **Add File**, change the address to **`0x10000`**, and choose `firmware-cyd.bin` (the **unsigned** file; `-signed.bin` is only for OTA).
+11. Click **Add File**, change the address to **`0x10000`**, and choose `firmware-cyd.bin` (the only firmware file in this release).
 12. Check the four rows against the table in 2.1:
 
     | Row | Flash Address | File |
@@ -174,19 +178,19 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 
 ### 2.4 How to know it worked (CYD)
 
-- Boot screen (from `v0.2.0-test3`, green phosphor radar): the **CYD32** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR** under them, a progress bar, **BLE OK / WIFI OK / RID OK**, the hint **Hold BOOT 3 s: unsigned update**, **BOOT / SELF-TEST** and **% / LOAD** in the top corners and the version in the bottom-left corner. A thin scanline walks down the screen and the titles jump by 2-3 px every few seconds: this is intended.
-  (`v0.2.0-test1` showed **CYD32**, then **passive RF sonar - v0.2.0-test1**.)
+- Boot screen (green phosphor radar): the **CYD32** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR** under them, a progress bar, **BLE OK / WIFI OK / RID OK**, the hint **Hold BOOT 3 s: unsigned update**, **BOOT / SELF-TEST** and **% / LOAD** in the top corners and the version in the bottom-left corner. A thin scanline walks down the screen and the titles jump by 2-3 px every few seconds: this is intended.
+  (`v0.2.0-test2` showed **CYD32**, then **passive RF sonar - v0.2.0-test2**.)
 - After about 3 seconds, the first screen is the **creature** (**CREA** tab): an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. The **SONAR / GRID / CREA / MENU** tabs are at the bottom.
 - The header reads **`CYD32 W0012 B0034 R0000`** (Wi-Fi, BLE and Remote ID contacts seen in the last 60 s). **`W!`** in red instead of the Wi-Fi count means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (2.5) if you see it.
 - Touch: tap a tab at the left and at the right edge of the screen. The tab under your finger must open (`v0.2.0-test2` mirrored the X axis: a tap on the left opened the tab on the right).
 - Tap **MENU → About**. You should see:
-  - `Version  v0.2.0-test1` (with `v0.2.0-test3`: `Version  v0.2.0-test3`, and the commit of that release)
-  - `Commit   d79be3f4d7e4`
+  - `Version  v0.2.0-test3`
+  - `Commit   c9042fc8dafe`
   - `Target   cyd`
   - `Status   Official` (*expected according to the code for this release build; to be confirmed on the device*)
   - `Key      b25ade7e4885efd1`
 - About 8 seconds after start-up the firmware runs a self-test. The first USB install is not affected by rollback; rollback applies only to OTA updates (section 4).
-- **`v0.2.0-test1` on the CYD**: see the known issue at the top. A **black screen with the backlight on** is the expected result of that bug, not a flashing mistake.
+- A **black screen with the backlight on** was the `v0.2.0-test1` bug, fixed since `v0.2.0-test2`. If it happens, open the serial console (2.5) and note the last line.
 
 ### 2.5 Serial console (115200 baud)
 
@@ -215,14 +219,9 @@ entry 0x400805e4
 
 `mode:DIO` and `entry 0x400805e4` prove that the bootloader at `0x1000` is correct.
 
-- With **`v0.2.0-test1`**, the application then prints only one line, and nothing after it:
+- With **`v0.2.0-test3`**, each start-up step prints a line before and after it (`[boot  <ms>]` is the time since start, in ms):
   ```text
-  [    16][E][Preferences.cpp:503] getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND
-  ```
-  This line is **harmless**: on a freshly erased device there is no OTA record yet. The silence after it is the known issue.
-- With the **fixed build** (next test build), the `sha NOT_FOUND` line is gone and each start-up step prints a line before and after it (`[boot  <ms>]` is the time since start, in ms):
-  ```text
-  [boot  <ms>] CYD32 <version> (<commit>) target=cyd
+  [boot  <ms>] CYD32 v0.2.0-test3 (c9042fc8dafe) target=cyd
   [boot  <ms>] heap free=<bytes>
   [boot  <ms>] privacy ...
   [boot  <ms>] privacy ok
@@ -250,7 +249,11 @@ entry 0x400805e4
   [boot  <ms>] ui ...
   [boot  <ms>] ui ok
   [boot  <ms>] first frame ...
+  [boot  <ms>] flush #1 x=<x> y=<y> <w>x<h> ...
+  [boot  <ms>] flush #1 ok
+  (the same two lines for flush #2 and #3)
   [boot  <ms>] first frame ok
+  [boot  <ms>] first frame: <n> flushes
   [boot  <ms>] scanner ...
   [boot  <ms>] wifi: clear STA config = ESP_OK (0)
   [boot  <ms>] wifi: mgmt-only filter = ESP_OK (0)
@@ -275,12 +278,12 @@ ESP32-S3R8, 16 MB flash, 8 MB PSRAM, 466×466 round AMOLED, two buttons: **KEYA*
 
 | Flash Address | File (direct link) | SHA-256 |
 |---|---|---|
-| `0x0` | [bootloader-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/bootloader-m5stack-stopwatch.bin) | `2a71d69b471e20c2bac7fb469f3c6a807b3ebee780e348e5889db0da849ca363` |
-| `0x8000` | [partitions-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/partitions-m5stack-stopwatch.bin) | `ba8fee9c82f9d2fde118ca4b56ebd577e6c608f0a8cc64952e4dd3603f006290` |
-| `0xe000` | [boot_app0-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/boot_app0-m5stack-stopwatch.bin) | `f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0` |
-| `0x10000` | [firmware-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/firmware-m5stack-stopwatch.bin) | `8204ea3974360454e66a9beedfc3126302657718bfdcad2a06cbe1a2d8765f45` |
+| `0x0` | [bootloader-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/bootloader-m5stack-stopwatch.bin) | `2a71d69b471e20c2bac7fb469f3c6a807b3ebee780e348e5889db0da849ca363` |
+| `0x8000` | [partitions-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/partitions-m5stack-stopwatch.bin) | `ba8fee9c82f9d2fde118ca4b56ebd577e6c608f0a8cc64952e4dd3603f006290` |
+| `0xe000` | [boot_app0-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/boot_app0-m5stack-stopwatch.bin) | `f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0` |
+| `0x10000` | [firmware-m5stack-stopwatch.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test3/firmware-m5stack-stopwatch.bin) | `a2cecc9013e5c5e7270f58fdee671a6c7b5bd58bd1f5752be286e0790e6c04db` |
 
-For later OTA updates: [firmware-m5stack-stopwatch-signed.bin](https://github.com/b-air/CYD32/releases/download/v0.2.0-test1/firmware-m5stack-stopwatch-signed.bin), SHA-256 `efabfc52ef73ce46c4ecfd3beb64aac86f81495d2d9e54c355ece4ce243b2a2e` (from the release `SHA256SUMS`).
+For later OTA updates: no signed file in `v0.2.0-test3` (unsigned test build).
 
 Important: on the StopWatch (ESP32-S3) the bootloader goes at **`0x0`**, not `0x1000`. All the other offsets are the same as on the CYD. Set **Flash Mode `dio`**, **Flash Frequency `80m`** and **Flash Size `16MB`** (verified in the image headers, see 0.4). (`boot_app0` is the same file for both boards; both copies have the same SHA-256.)
 
@@ -317,7 +320,7 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 8. The first row already exists, with **Flash Address** `0x1000`. Change it to **`0x0`**. Click its file box and choose `bootloader-m5stack-stopwatch.bin`.
 9. Click **Add File**. A new row appears; **its address also starts at `0x1000`**: change it to **`0x8000`**, then choose `partitions-m5stack-stopwatch.bin`.
 10. Click **Add File**, change the address to **`0xe000`**, and choose `boot_app0-m5stack-stopwatch.bin`.
-11. Click **Add File**, change the address to **`0x10000`**, and choose `firmware-m5stack-stopwatch.bin` (the **unsigned** file; `-signed.bin` is only for OTA).
+11. Click **Add File**, change the address to **`0x10000`**, and choose `firmware-m5stack-stopwatch.bin` (the only firmware file in this release).
 12. Check the four rows against the table in 3.1:
 
     | Row | Flash Address | File |
@@ -348,14 +351,13 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 
 ### 3.4 How to know it worked (StopWatch)
 
-- Round boot screen (from `v0.2.0-test3`, green phosphor radar on a pure black background): the **M5Stack** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR**, **STOPWATCH**, **BLE OK / WIFI OK / RID OK**, **LOAD xx%** with a progress arc on the rim, the version and the hint **Hold KEYA 3 s: unsigned update**. The scanline and the short title jumps are intended.
-  (`v0.2.0-test1` showed **CYD32**, **DEFENSIVE SONAR**, **M5 STOPWATCH** and a yellow arc.)
+- Round boot screen (green phosphor radar on a pure black background): the **M5Stack** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR**, **STOPWATCH**, **BLE OK / WIFI OK / RID OK**, **LOAD xx%** with a progress arc on the rim, the version and the hint **Hold KEYA 3 s: unsigned update**. The scanline and the short title jumps are intended.
 - Then the **creature** screen: an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. **SONAR** is in the menu and in the curved tab band at the bottom of the sonar and grid screens. All screens are green; only drones are yellow. On **GRID**, tap a cell to show its details in the plate under the grid.
 - **`W!`** in red next to the battery instead of **2.4G** means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (3.5).
-- In `v0.2.0-test2` the StopWatch screen stayed **black**; `v0.2.0-test3` contains the fix. The console now prints `flush #1 ...` / `flush #1 ok` for the first three screen updates and `first frame: <n> flushes`. If the first frame is not drawn within 5 s it prints `first frame NOT done after 5 s` with the free memory.
+- In `v0.2.0-test2` the StopWatch screen stayed **black**; `v0.2.0-test3` contains the fix. If the first frame is not drawn within 5 s, the console prints `first frame NOT done after 5 s` with the free memory (3.5).
 - To open the menu: tap **MENU** on the rim, or **hold KEYA and KEYB together for about 1 second** (800 ms in the code). Tap the **COUNTERS** wedge, then tap **SIG** in the centre or press **KEYB** to open **ABOUT**. You should see:
-  - `Version  v0.2.0-test1` (with `v0.2.0-test3`: `Version  v0.2.0-test3`, and the commit of that release)
-  - `Commit   d79be3f4d7e4`
+  - `Version  v0.2.0-test3`
+  - `Commit   c9042fc8dafe`
   - `Target   m5stack-stopwatch`
   - `Status   Official` (*expected, to be confirmed*)
   - `Key      b25ade7e4885efd1`
@@ -379,17 +381,19 @@ mode:DIO, clock div:1
 entry 0x403c98d0
 ```
 
-`entry 0x403c98d0` is the entry point of `bootloader-m5stack-stopwatch.bin`. On a fresh device the same harmless `sha NOT_FOUND` line can appear with `v0.2.0-test1`. With the fixed build, the `[boot <ms>]` lines are the same as on the CYD (2.5), except that the display step is `M5.begin (CO5300, CST820B, PMIC)`, the log prints `draw buffer in internal DMA, 40 lines` and then `draw buffer <address>, 37280 bytes` (an internal RAM address, starting with `0x3fc`), and there is a `wardriving` step. `draw buffer in PSRAM, 40 lines` (address starting with `0x3c` or `0x3d`) is only the fallback when internal DMA memory is short: it works, but report it.
+`entry 0x403c98d0` is the entry point of `bootloader-m5stack-stopwatch.bin`. With `v0.2.0-test3`, the `[boot <ms>]` lines are the same as on the CYD (2.5), except that the display step is `M5.begin (CO5300, CST820B, PMIC)`, there is a `wardriving` step, and the log prints `draw buffer in internal DMA, 40 lines` and then `draw buffer <address>, 37280 bytes` (an internal RAM address, starting with `0x3fc`). `draw buffer in PSRAM, 40 lines` (address starting with `0x3c` or `0x3d`) is only the fallback when internal DMA memory is short: it works, but report it.
 
 ---
 
 ## 4. Later updates over Wi-Fi from an iPhone (OTA) — both devices
 
-Use the **signed** file that matches the device: `firmware-cyd-signed.bin` or `firmware-m5stack-stopwatch-signed.bin`. Both signed files are on the release; check their SHA-256 against sections 2.1 and 3.1 (see 0.2).
+> **Not available with `v0.2.0-test3`.** This release has no signed files. This section applies once a release ships `firmware-cyd-signed.bin` and `firmware-m5stack-stopwatch-signed.bin` (planned before the public phase, for the OTA tests); check their SHA-256 against that release's `SHA256SUMS`.
+
+Use the **signed** file that matches the device: `firmware-cyd-signed.bin` or `firmware-m5stack-stopwatch-signed.bin`.
 
 ### 4.1 On the iPhone, before you start
 
-1. In Safari, sign in to GitHub and open the release page: <https://github.com/b-air/CYD32/releases/tag/v0.2.0-test1>.
+1. In Safari, sign in to GitHub and open the page of the release that has the signed files (in the **Releases** list of the firmware repository).
 2. Under **Assets**, tap the signed file for your device and download it. It goes to the **Files** app (usually **Downloads**). (*iOS dialog wording: to be confirmed.*)
 3. Do this **before** you join the device's hotspot. The hotspot has no internet access.
 
@@ -448,7 +452,7 @@ Use this only to install a file that is **not signed** (for example a test build
 2. **When the boot screen appears** (it shows "Hold BOOT 3 s…" / "Hold KEYA 3 s…"), **hold** the button:
    - **CYD:** **BOOT**. Hold it only once the splash is showing. If you hold BOOT *before* the reset, the ESP32 starts the USB download mode instead.
    - **StopWatch:** **KEYA** (yellow).
-   Start holding as soon as the splash appears and hold it **for 3 seconds without letting go**. From the next test build on, the firmware arms at exactly 3 seconds and the splash waits while you hold the button.
+   Start holding as soon as the splash appears and hold it **for 3 seconds without letting go**. From `v0.2.0-test2` on, the firmware arms at exactly 3 seconds and the splash waits while you hold the button.
 3. The screen shows **"…held. Arm UNSIGNED update mode?"** with **Cancel** and **Arm unsigned**. Tap **Arm unsigned** within **30 seconds**. Otherwise nothing is armed. On the StopWatch, KEYA or KEYB mean **Cancel**.
 4. A red **UNSIGNED FIRMWARE MODE** banner appears. Start update mode (4.2). The screen and the web page show **UNSIGNED ARMED**.
 5. Upload the unsigned `.bin` (4.3). The arming only applies to the update session you start next (it is not kept if you leave or restart). Within that session, the first unsigned upload uses it up, whether it succeeds or not.
@@ -469,13 +473,14 @@ Board check, file size, ESP-IDF validation and the downgrade question still appl
 | "Connected to device:" shows the wrong chip | The other device is plugged in. Disconnect and use the right files. |
 | "Offset field in row N is already in use!" | Two rows have the same address. A new row always starts at `0x1000`: change it. |
 | **Wrong offsets** (for example the CYD bootloader at `0x0`, a StopWatch row left at `0x1000`, or the application at `0x1000`) | The device does not start, or the ROM prints `invalid header` / `flash read err` in a loop. Flash all four files again at the addresses in 2.1 / 3.1, with **Erase all** ticked. |
-| **Boot loop**: the console repeats `rst:` lines, `Guru Meditation Error` or `abort() was called` | Note the last lines before the restart. With the fixed build, a `[lvgl] ASSERT FAILED at …` line names the cause. Reflash with **Erase all** ticked; if it continues, send the log. |
-| **Black screen with the backlight on** (CYD) | The firmware started but drew nothing. With `v0.2.0-test1` this is the known issue (top of this guide): wait for the next test build. With the fixed build, open the console (2.5): the last `...` line without `ok` shows the step that hangs. |
+| **Boot loop**: the console repeats `rst:` lines, `Guru Meditation Error` or `abort() was called` | Note the last lines before the restart. Since `v0.2.0-test2`, a `[lvgl] ASSERT FAILED at …` line names the cause; a **CYD32 FATAL ERROR** screen means start-up stopped on purpose (send the console log). Reflash with **Erase all** ticked; if it continues, send the log. |
+| **Black screen with the backlight on** (CYD) | The firmware started but drew nothing. This was the `v0.2.0-test1` bug, fixed since `v0.2.0-test2`. If it still happens, open the console (2.5): the last `...` line without `ok` shows the step that hangs. |
+| **Black screen** (StopWatch) | This was the `v0.2.0-test2` bug, fixed in `v0.2.0-test3`. If it still happens, open the console (3.5): note the `flush #` lines and any `first frame NOT done after 5 s` line. |
 | Screen completely dark, backlight off | The firmware did not start or the files are wrong: check the console (2.5 / 3.5). No output at all after `entry 0x…`: reflash with **Erase all**. No ROM output: the board is not powered, or the cable is charge-only. |
-| Console line `getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND` | **Harmless.** On a freshly erased device there is no OTA record yet. The fixed build no longer prints it. |
+| Console line `getBytesLength(): nvs_get_blob len fail: sha NOT_FOUND` | **Harmless.** On a freshly erased device there is no OTA record yet. Builds since `v0.2.0-test2` no longer print it. |
 | Safari: **bad host** | Type exactly `192.168.4.1`. |
 | `rejected: bad session token` | Reload `192.168.4.1` and upload again (the page carries a token for each session). |
-| `file is not signed` | You uploaded the unsigned `firmware-*.bin`. Use `*-signed.bin`, or arm the unsigned mode (section 5). |
+| `file is not signed` | You uploaded the unsigned `firmware-*.bin`. Use `*-signed.bin` (not available in `v0.2.0-test3`; use unsigned mode, section 5), or arm the unsigned mode (section 5). |
 | `invalid signature` / `invalid signature block` | The file is damaged or signed with another key. Download it again and check its SHA-256. |
 | `wrong board (image is for …)` / `wrong board (no target marker)` | The file is for the other device (or not a CYD32 image). Nothing was changed. Use the right file. |
 | `file larger than the OTA slot` / `not an ESP32 image` / `file too short` / `invalid image (esp_ota_end)` | This is not a valid firmware file for this device. Check the file name and SHA-256. |
@@ -494,11 +499,12 @@ Board check, file size, ESP-IDF validation and the downgrade question still appl
 
 ## Sources
 
-- Firmware repository `b-air/CYD32` at `d79be3f`: `platformio.ini`, `partitions.csv`, `partitions_stopwatch.csv`, `.github/workflows/release.yml`, `docs/RELEASING.md`, `README.md`, `src/main.cpp`, `src/ota_portal.cpp`, `src/ota_sig.cpp`, `src/fw_status.cpp`, `src/ui.cpp`, `src/ui_round.cpp`, `src/hw.cpp`, `src/hw_stopwatch.cpp`, `include/ui_layout_cyd.h`, `include/ui_layout_round.h`, `scripts/pio_pre_build.py`.
-- Release `v0.2.0-test1`: assets, `SHA256SUMS` (including the two `*-signed.bin` files), and the image headers of the `.bin` files.
+- Firmware repository `b-air/CYD32` at `c9042fc` (`v0.2.0-test3`): `platformio.ini`, `partitions.csv`, `partitions_stopwatch.csv`, `.github/workflows/release.yml`, `docs/RELEASING.md`, `README.md`, `src/main.cpp`, `src/ota_portal.cpp`, `src/ota_sig.cpp`, `src/fw_status.cpp`, `src/ui.cpp`, `src/ui_round.cpp`, `src/hw.cpp`, `src/hw_stopwatch.cpp`, `include/ui_layout_cyd.h`, `include/ui_layout_round.h`, `scripts/pio_pre_build.py`.
+- Release `v0.2.0-test3`: assets, `SHA256SUMS` (checked with `grep '\.bin$' SHA256SUMS | sha256sum -c`: 8 OK), and the image headers of the `.bin` files (`esptool image-info`).
+- First hardware test of `v0.2.0-test1` (CYD), 18 Nov 2026: serial log and screen state.
 - Flash layout: arduino-esp32 2.0.17 `tools/platformio-build.py` (bootloader `0x1000` on ESP32 / `0x0` on ESP32-S3, partitions `0x8000`, boot_app0 `0xe000`); platform-espressif32 `builder/main.py` (application `0x10000`).
 - Web flasher: <https://espressif.github.io/esptool-js/> (page and script read on 18 Nov 2026: field names, Flash Mode/Frequency/Size options per chip, "Erase all", success messages; Flash settings are applied only to the file at the bootloader address).
-- Flash settings: `esptool image-info` (esptool 5.6.0) on the release `bootloader-*.bin` and `firmware-*.bin`: CYD DIO / 40m / 4MB, StopWatch DIO / 80m / 16MB.
+- Flash settings: `esptool image-info` (esptool 5.6.0) on the `v0.2.0-test1`, `v0.2.0-test2` and `v0.2.0-test3` `bootloader-*.bin` and `firmware-*.bin`: CYD DIO / 40m / 4MB, StopWatch DIO / 80m / 16MB.
 - First hardware test, 18 Nov 2026: serial log of the CYD (known issue).
 - Manual download mode (ESP32): Espressif esptool documentation, "Boot Mode Selection" (`docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/boot-mode-selection.html`)
 - StopWatch download mode: <https://docs.m5stack.com/en/core/StopWatch>
