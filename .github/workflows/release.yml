@@ -72,7 +72,11 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: |
+          cd dist
+          export LC_ALL=C
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
       - name: Blocking check - no release without its source
         env:
           TAG: ${{ github.ref_name }}
@@ -95,5 +99,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --verify-tag \
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --verify-tag --prerelease --latest=false \
             --notes "Unsigned build artefacts. The maintainer signs firmware-cyd.bin and firmware-m5stack-stopwatch.bin locally and uploads the signed images (see docs/RELEASING.md). Full corresponding source: cyd32-${TAG}-source.tar.gz."
