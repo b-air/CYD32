@@ -61,7 +61,7 @@ bool touch(int16_t &x, int16_t &y) {
   const bool down = M5.Touch.getCount() > 0 && t.isPressed();
   const uint32_t now = millis();
   if (down) {
-    // Whole panel accepted (the curved tabs reach r = 206; a press that
+    // Whole panel accepted (the curved tabs reach r = 225; a press that
     // slides onto the bezel must not turn into a release mid-gesture).
     x = (int16_t)LV_CLAMP(0, (int)t.x, CYD32_SCREEN_W - 1);
     y = (int16_t)LV_CLAMP(0, (int)t.y, CYD32_SCREEN_H - 1);
