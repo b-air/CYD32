@@ -172,8 +172,11 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 
 ### 2.4 How to know it worked (CYD)
 
-- Boot screen: **CYD32**, then **passive RF sonar - v0.2.0-test1**, a progress bar with **BLE OK / WIFI OK / RID OK**, and the hint **Hold BOOT 3 s: unsigned update**.
-- After about 3 seconds, the **SONAR** screen appears with the **SONAR / GRID / CREA / MENU** tabs.
+- Boot screen (from `v0.2.0-test3`, green phosphor radar): the **CYD32** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR** under them, a progress bar, **BLE OK / WIFI OK / RID OK**, the hint **Hold BOOT 3 s: unsigned update**, **BOOT / SELF-TEST** and **% / LOAD** in the top corners and the version in the bottom-left corner. A thin scanline walks down the screen and the titles jump by 2-3 px every few seconds: this is intended.
+  (`v0.2.0-test1` showed **CYD32**, then **passive RF sonar - v0.2.0-test1**.)
+- After about 3 seconds, the first screen is the **creature** (**CREA** tab): an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. The **SONAR / GRID / CREA / MENU** tabs are at the bottom.
+- The header reads **`CYD32 W0012 B0034 R0000`** (Wi-Fi, BLE and Remote ID contacts seen in the last 60 s). **`W!`** in red instead of the Wi-Fi count means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (2.5) if you see it.
+- Touch: tap a tab at the left and at the right edge of the screen. The tab under your finger must open (`v0.2.0-test2` mirrored the X axis: a tap on the left opened the tab on the right).
 - Tap **MENU → About**. You should see:
   - `Version  v0.2.0-test1`
   - `Commit   d79be3f4d7e4`
@@ -247,9 +250,14 @@ entry 0x400805e4
   [boot  <ms>] first frame ...
   [boot  <ms>] first frame ok
   [boot  <ms>] scanner ...
+  [boot  <ms>] wifi: clear STA config = ESP_OK (0)
+  [boot  <ms>] wifi: mgmt-only filter = ESP_OK (0)
+  [boot  <ms>] wifi: set_mode(NULL) = ESP_OK (0)
+  [boot  <ms>] wifi: promiscuous probe in NULL mode = ESP_OK (0)
+  [boot  <ms>] scanner: wifi=ok (ESP_OK) ble init=1 scan=1
   [boot  <ms>] scanner ok
-  [boot  <ms>] ui sonar ...
-  [boot  <ms>] ui sonar ok
+  [boot  <ms>] ui home ...
+  [boot  <ms>] ui home ok
   [boot  <ms>] setup done in <ms> ms, heap free=<bytes>
   ```
   The draw buffer address must end in `0`, `4`, `8` or `c`. If the log stops, the **last `...` line without its `ok`** is the step that hangs. If LVGL detects an error, it prints `[lvgl] ASSERT FAILED at <file>:<line>, rebooting`, and the board restarts.
@@ -338,8 +346,11 @@ Every step is one screen or one field of <https://espressif.github.io/esptool-js
 
 ### 3.4 How to know it worked (StopWatch)
 
-- Round boot screen: **CYD32**, **DEFENSIVE SONAR**, **M5 STOPWATCH**, the markers **BLE / WIFI / RID**, the version **v0.2.0-test1**, and the hint **Hold KEYA 3 s: unsigned update**.
-- Then **SONAR ACTIVE**.
+- Round boot screen (from `v0.2.0-test3`, green phosphor radar on a pure black background): the **CYD32** logo and the **PASSIVE RF SONAR** title over a rotating sweep, **DEFENSIVE SONAR**, **M5 STOPWATCH**, **BLE OK / WIFI OK / RID OK**, **LOAD xx%** with a progress arc on the rim, the version and the hint **Hold KEYA 3 s: unsigned update**. The scanline and the short title jumps are intended.
+  (`v0.2.0-test1` showed **CYD32**, **DEFENSIVE SONAR**, **M5 STOPWATCH** and a yellow arc.)
+- Then the **creature** screen: an egg that hatches after about 3 seconds, then a baby that grows with the number of distinct radio sources. **SONAR** is in the menu and in the curved tab band at the bottom of the sonar and grid screens.
+- **`W!`** in red next to the battery instead of **2.4G** means that the Wi-Fi scanner failed to start; BLE keeps working. Report the `wifi:` and `scanner:` lines of the serial console (3.5).
+- In `v0.2.0-test2` the StopWatch screen stayed **black**; `v0.2.0-test3` contains the fix. The console now prints `flush #1 ...` / `flush #1 ok` for the first three screen updates and `first frame: <n> flushes`. If the first frame is not drawn within 5 s it prints `first frame NOT done after 5 s` with the free memory.
 - To open the menu: tap **MENU** on the rim, or **hold KEYA and KEYB together for about 1 second** (800 ms in the code). Tap the **COUNTERS** wedge, then tap **SIG** in the centre or press **KEYB** to open **ABOUT**. You should see:
   - `Version  v0.2.0-test1`
   - `Commit   d79be3f4d7e4`

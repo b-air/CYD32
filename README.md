@@ -21,6 +21,15 @@ nearest-neighbour blit at 3x (192 px) into a PSRAM buffer.
 
 ![screens](docs/screenshots/board.png)
 
+From `v0.2.0-test3` the boot, sonar and (StopWatch) wardriving screens use the
+v9 green phosphor radar theme: a procedural PPI scope with a 3 s clockwise
+sweep, a 40 degree trailing wedge and fading echoes; yellow is reserved for
+drones. The other screens keep the yellow Y3-d HUD with harmonised greens. The
+first screen after boot is the creature (an egg that hatches, then grows with
+detections). Reference renders and host renders of the firmware are in
+[`docs/screenshots/v9/`](docs/screenshots/v9/) (counters and contacts there are
+EXAMPLE DATA; not tested on hardware yet).
+
 ## What it does (and does not do)
 
 - Wi-Fi: promiscuous mode filtered to **management frames only** (beacons, probe
