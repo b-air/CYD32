@@ -354,14 +354,14 @@ void onGridTouch(lv_event_t *e) {
   eggStep(cell);
 }
 void buildGrid() {
-  for (int c = 0; c < 10; c++) { char s[2] = {(char)('A' + c), 0}; lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_WATER), kGx + c * kCw + 8, 2); }
+  for (int c = 0; c < 10; c++) { char s[2] = {(char)('A' + c), 0}; lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_AMBER), kGx + c * kCw + 8, 2); }
   lv_obj_t *g = box(content, kGx, kGy, 10 * kCw, 8 * kCh, CYD32_COL_PANEL);
   lv_obj_set_style_border_color(g, C(CYD32_COL_GRID), 0); lv_obj_set_style_border_width(g, 1, 0);
   lv_obj_add_flag(g, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(g, onGridTouch, LV_EVENT_PRESSED, nullptr);
   for (int r = 0; r < 8; r++) {
     char s[2] = {(char)('1' + r), 0};
-    lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_WATER), 10, kGy + r * kCh + 5);
+    lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_AMBER), 10, kGy + r * kCh + 5);
     for (int c = 0; c < 10; c++) {
       gridMarks[r * 10 + c] = label(g, ".", &lv_font_unscii_8, CYD32_COL_GRID);
       lv_obj_set_pos(gridMarks[r * 10 + c], c * kCw + 8, r * kCh + 4);
