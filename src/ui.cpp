@@ -70,10 +70,6 @@ void buildChrome() {
   lv_obj_clean(scr);
   lv_obj_set_style_bg_color(scr, C(CYD32_COL_BG), 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-#if defined(CYD32_HW_M5STACK_STOPWATCH)
-  lv_obj_set_style_radius(scr, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_clip_corner(scr, true, 0);
-#endif
   header = box(scr, CYD32_HEADER_X, CYD32_HEADER_Y, CYD32_HEADER_W, CYD32_HEADER_H, CYD32_COL_GRID);
   headerLbl = label(header, "", &lv_font_unscii_8, CYD32_COL_AMBER);
   lv_obj_align(headerLbl, LV_ALIGN_LEFT_MID, 4, 0);

@@ -4,6 +4,7 @@
 #include "hw.h"
 #include <Arduino.h>
 #include "boot_log.h"
+#include "ota_rollback.h"
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
@@ -30,7 +31,8 @@ class LGFX_CYD : public lgfx::LGFX_Device {
       c.pin_bl = 21; c.invert = false; c.freq = 44100; c.pwm_channel = 7;
       light_.config(c); panel_.setLight(&light_); }
     { auto c = touch_.config();
-      c.x_min = 300; c.x_max = 3900; c.y_min = 200; c.y_max = 3700;
+      // Landscape (rotation 1) maps raw Y to screen X: y_min > y_max un-mirrors X.
+      c.x_min = 300; c.x_max = 3900; c.y_min = 3700; c.y_max = 200;
       c.pin_int = 36; c.bus_shared = false; c.offset_rotation = 0;
       c.spi_host = VSPI_HOST; c.freq = 1000000;
       c.pin_sclk = 25; c.pin_mosi = 32; c.pin_miso = 39; c.pin_cs = 33;
@@ -67,6 +69,7 @@ void fatal(const char *msg) {
   tft.setTextSize(1);
   tft.drawString(msg, 8, 40);
   tft.drawString("Halted. See the serial console (115200).", 8, 56);
+  ota_rollback::ifPendingVerify("fatal error", 3000);
   for (;;) delay(1000);  // stay on this screen: no reset loop
 }
 }  // namespace hw

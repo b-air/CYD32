@@ -157,7 +157,12 @@ void buildChrome() {
   lv_obj_set_style_bg_color(scr, C(COL_BG), 0);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_radius(scr, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_clip_corner(scr, true, 0);
+  // No clip_corner here: on a parent with children, LVGL 9.2 renders them into
+  // two ARGB8888 layers as tall as the radius (466 x 233 x 4 = 434 KB each).
+  // That cannot fit in LV_MEM_SIZE, the layer allocation fails, and with
+  // LV_OS_NONE lv_draw_dispatch_wait_for_request() spins forever: the first
+  // frame never reaches the flush callback (black screen in v0.2.0-test2).
+  // The round glass already hides the corners, so nothing is lost.
 
   content = box(scr, 0, 0, CYD32_SCREEN_W, CYD32_SCREEN_H, COL_BG);
   lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);

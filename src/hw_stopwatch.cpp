@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include "boot_log.h"
+#include "ota_rollback.h"
 
 namespace hw {
 void begin() {
@@ -32,6 +33,10 @@ bool touch(int16_t &x, int16_t &y) {
   return true;
 }
 void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
+  // Synchronous CPU copy into M5GFX's PSRAM frame buffer (Panel_AMOLED_Framebuffer);
+  // auto-display then streams the dirty rectangle, rounded to even bounds,
+  // to the CO5300 through internal DMA line buffers. No DMA reads our buffer,
+  // so there is nothing to wait for before lv_display_flush_ready().
   M5.Display.pushImage(x, y, w, h, reinterpret_cast<const uint16_t *>(px));
 }
 bool bootButtonPressed() {
@@ -53,6 +58,7 @@ void fatal(const char *msg) {
   M5.Display.setTextSize(1);
   M5.Display.drawString(msg, CYD32_CX, CYD32_CY + 4);
   M5.Display.drawString("Halted. See the serial console.", CYD32_CX, CYD32_CY + 24);
+  ota_rollback::ifPendingVerify("fatal error", 3000);
   for (;;) delay(1000);  // stay on this screen: no reset loop
 }
 }  // namespace hw
