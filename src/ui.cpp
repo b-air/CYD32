@@ -39,7 +39,7 @@ lv_obj_t *hdr[7], *tabBtn[4];
 bool phosphor = false;
 lv_obj_t *gridMarks[80], *gridLog;
 lv_obj_t *creaImg, *creaInfo, *creaBar, *flash;
-lv_obj_t *detList;
+lv_obj_t *detList, *detRows[14];
 lv_obj_t *otaQr, *otaInfo, *otaBar, *otaMsg, *otaConfirm;
 // easter egg
 const char *kEgg[4] = {"A1", "B2", "C3", "D4"};
@@ -75,7 +75,6 @@ void onShow(lv_event_t *e) { ui::show((ui::Screen)(intptr_t)lv_event_get_user_da
 // 5 px top-left chamfer on the phosphor tab buttons (cut in the bar colour,
 // idle buttons get a G2 diagonal to close the outline).
 void onTabChamfer(lv_event_t *e) {
-  if (!phosphor) return;
   lv_obj_t *b = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
   lv_layer_t *L = lv_event_get_layer(e);
   lv_area_t a;
@@ -147,27 +146,18 @@ void buildChrome() {
 // Y3-d (yellow HUD, harmonised greens) everywhere else.
 void styleChrome() {
   const int active = cur == ui::SONAR ? 0 : cur == ui::GRID ? 1 : cur == ui::CREATURE ? 2 : cur == ui::MENU ? 3 : -1;
-  lv_obj_set_style_bg_color(tabbar, C(phosphor ? CYD32_SONAR_BG_CYD : CYD32_COL_PANEL), 0);
+  // The tab buttons use the sonar nav style on every screen (README section 7).
+  lv_obj_set_style_bg_color(tabbar, C(CYD32_SONAR_BG_CYD), 0);
   for (int i = 0; i < 4; i++) {
     lv_obj_t *b = tabBtn[i], *l = lv_obj_get_child(b, 0);
-    if (phosphor) {
-      const bool on = i == active;
-      lv_obj_set_pos(b, i * CYD_BUTTON_PITCH + 1, CYD_BUTTON_Y - CYD32_TAB_Y);
-      lv_obj_set_size(b, CYD_BUTTON_W, CYD_BUTTON_H);
-      lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G4 : CYD32_SONAR_BG_CYD), 0);
-      lv_obj_set_style_border_width(b, on ? 0 : 1, 0);
-      lv_obj_set_style_border_color(b, C(CYD32_SONAR_G2), 0);
-      lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G5 : CYD32_SONAR_G1), LV_STATE_PRESSED);
-      lv_obj_set_style_text_color(l, C(on ? CYD32_SONAR_BG_CYD : CYD32_SONAR_G4), 0);
-    } else {
-      lv_obj_set_pos(b, i * CYD32_TAB_BTN_W, 0);
-      lv_obj_set_size(b, CYD32_TAB_BTN_W, CYD32_TAB_H);
-      lv_obj_set_style_bg_color(b, C(CYD32_COL_PANEL), 0);
-      lv_obj_set_style_border_width(b, 1, 0);
-      lv_obj_set_style_border_color(b, C(CYD32_COL_AMBER), 0);
-      lv_obj_set_style_bg_color(b, C(CYD32_COL_GRID), LV_STATE_PRESSED);
-      lv_obj_set_style_text_color(l, C(CYD32_COL_AMBER), 0);
-    }
+    const bool on = i == active;
+    lv_obj_set_pos(b, i * CYD_BUTTON_PITCH + 1, CYD_BUTTON_Y - CYD32_TAB_Y);
+    lv_obj_set_size(b, CYD_BUTTON_W, CYD_BUTTON_H);
+    lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G4 : CYD32_SONAR_BG_CYD), 0);
+    lv_obj_set_style_border_width(b, on ? 0 : 1, 0);
+    lv_obj_set_style_border_color(b, C(CYD32_SONAR_G2), 0);
+    lv_obj_set_style_bg_color(b, C(on ? CYD32_SONAR_G5 : CYD32_SONAR_G1), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(l, C(on ? CYD32_SONAR_BG_CYD : CYD32_SONAR_G4), 0);
     lv_obj_center(l);
   }
   lv_obj_set_style_text_color(statusLbl, C(phosphor ? CYD32_SONAR_G3 : CYD32_COL_CYAN), 0);
@@ -388,7 +378,7 @@ void refreshGrid() {
   for (int i = 0; i < n; i++) { uint8_t &m = mark[mix(e[i].id) % 80]; m = e[i].kind == det::DRONE ? 2 : (m ? m : 1); }
   for (int i = 0; i < 80; i++) {
     lv_label_set_text(gridMarks[i], mark[i] ? "X" : ".");
-    lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? CYD32_COL_DRONE : mark[i] ? CYD32_COL_AMBER : CYD32_COL_GRID), 0);
+    lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? CYD32_COL_DRONE : mark[i] ? CYD32_COL_HITX : CYD32_COL_GRID), 0);
   }
   char t[96] = "LOG\n"; char id[9];
   for (int i = 0; i < n && i < 5; i++) {
@@ -724,21 +714,26 @@ void buildMenu() {
 }
 void buildDetails() {
   label(content, "VISIBLE NOW (salted ids, reset at boot)", &lv_font_unscii_8, CYD32_COL_AMBER);
-  detList = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
-  lv_obj_set_pos(detList, 0, 14);
+  for (int i = 0; i < 14; i++) {
+    detRows[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_set_pos(detRows[i], 0, 14 + i * 10);
+  }
+  detList = detRows[0];
 }
 void refreshDetails() {
   static det::Entry e[14];
   const int n = det::snapshot(e, 14);
-  char t[640] = ""; char id[9];
-  for (int i = 0; i < n; i++) {
+  char id[9];
+  for (int i = 0; i < 14; i++) {
+    if (i >= n) { lv_label_set_text(detRows[i], i == 0 ? "nothing yet..." : ""); continue; }
     privacy::idToStr(e[i].id, id);
     char l[48];
-    snprintf(l, sizeof l, "%-5s %s %4d dBm ch%-2u %lus\n", e[i].kind == det::WIFI ? "WIFI" : e[i].kind == det::BLE ? "BLE" : "RID",
+    snprintf(l, sizeof l, "%-5s %s %4d dBm ch%-2u %lus", e[i].kind == det::WIFI ? "WIFI" : e[i].kind == det::BLE ? "BLE" : "RID",
              id, e[i].rssi, e[i].channel, (unsigned long)((nowMs - e[i].lastSeen) / 1000));
-    strncat(t, l, sizeof t - strlen(t) - 1);
+    lv_label_set_text(detRows[i], l);
+    // Drones (Remote ID) in #FCEE0A, the other rows stay white.
+    lv_obj_set_style_text_color(detRows[i], C(e[i].kind == det::DRONE ? CYD32_COL_DRONE : CYD32_COL_WHITE), 0);
   }
-  lv_label_set_text(detList, n ? t : "nothing yet...");
 }
 void buildStub(const char *title, const char *what) {
   lv_obj_t *t = label(content, title, &lv_font_montserrat_16, CYD32_COL_AMBER);
