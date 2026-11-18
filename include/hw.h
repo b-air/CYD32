@@ -17,5 +17,6 @@ bool btnBClicked();                 // KEYB short press (SELECT)
 bool btnAPressed();
 bool btnBPressed();
 int batteryPct();                   // 0..100, hardware-dependent
+void touchHit(const char *what);    // serial "touch: hit ..." line (UI hit target)
 #endif
 }
