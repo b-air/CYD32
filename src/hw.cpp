@@ -3,6 +3,7 @@
 #ifndef CYD32_HW_M5STACK_STOPWATCH
 #include "hw.h"
 #include <Arduino.h>
+#include "boot_log.h"
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
@@ -43,10 +44,10 @@ LGFX_CYD tft;
 namespace hw {
 void begin() {
   pinMode(0, INPUT_PULLUP);
-  tft.init();
+  BOOT_STEP("tft.init (ILI9341 HSPI, XPT2046 VSPI)", tft.init());
   tft.setRotation(1);  // landscape 320x240
-  tft.setBrightness(200);
-  tft.fillScreen(0x0000);
+  BOOT_STEP("backlight", tft.setBrightness(200));
+  BOOT_STEP("fillScreen", tft.fillScreen(0x0000));
 }
 bool touch(int16_t &x, int16_t &y) {
   lgfx::touch_point_t tp;
@@ -57,5 +58,16 @@ void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
   tft.pushImage(x, y, w, h, reinterpret_cast<const lgfx::rgb565_t *>(px));
 }
 bool bootButtonPressed() { return digitalRead(0) == LOW; }
+void fatal(const char *msg) {
+  BOOT_LOG("FATAL: %s. Halted.", msg);
+  tft.fillScreen(0x0000);
+  tft.setTextColor(0xF800, 0x0000);  // red on black
+  tft.setTextSize(2);
+  tft.drawString("CYD32 FATAL ERROR", 8, 8);
+  tft.setTextSize(1);
+  tft.drawString(msg, 8, 40);
+  tft.drawString("Halted. See the serial console (115200).", 8, 56);
+  for (;;) delay(1000);  // stay on this screen: no reset loop
+}
 }  // namespace hw
 #endif

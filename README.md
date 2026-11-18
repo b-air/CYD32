@@ -85,6 +85,9 @@ default `keys/ota_pub_0.pem` and `keys/ota_pub_1.pem`), `CYD32_SOURCE_URL`,
 
 ## First flash (USB, from a computer)
 
+Step-by-step guide for both boards (web flasher, every field, serial console,
+troubleshooting): **[docs/INSTALL.md](docs/INSTALL.md)**.
+
 The first install must be done over USB from a computer:
 
 ```bash
@@ -96,7 +99,8 @@ or with esptool and the four release files for the board (bootloader,
 partitions, boot_app0, firmware; see `docs/RELEASING.md`). There is no merged
 image. The bootloader goes at 0x1000 on the CYD (ESP32) and at 0x0 on the
 StopWatch (ESP32-S3); on both, partitions go at 0x8000, boot_app0 at 0xe000 and
-the app at 0x10000. Browser
+the app at 0x10000. Flash settings: CYD `dio` / `40m` / `4MB`, StopWatch
+`dio` / `80m` / `16MB` (as in the image headers). Browser
 flashers need Web Serial (Chrome or Edge on a computer); iOS has no Web Serial.
 USB flashing always remains possible: CYD32 burns **no eFuse**, and uses no
 Secure Boot and no flash encryption.

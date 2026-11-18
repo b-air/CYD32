@@ -9,15 +9,16 @@
 #include "ui_layout.h"
 #include <Arduino.h>
 #include <M5Unified.h>
+#include "boot_log.h"
 
 namespace hw {
 void begin() {
   auto cfg = M5.config();
   cfg.serial_baudrate = 115200;
-  M5.begin(cfg);
+  BOOT_STEP("M5.begin (CO5300, CST820B, PMIC)", M5.begin(cfg));
   M5.Display.setRotation(0);  // native round 466x466
-  M5.Display.setBrightness(200);
-  M5.Display.fillScreen(0x0000);
+  BOOT_STEP("brightness", M5.Display.setBrightness(200));
+  BOOT_STEP("fillScreen", M5.Display.fillScreen(0x0000));
 }
 bool touch(int16_t &x, int16_t &y) {
   M5.update();
@@ -42,5 +43,17 @@ bool btnBClicked() { M5.update(); return M5.BtnB.wasClicked(); }
 bool btnAPressed() { M5.update(); return M5.BtnA.isPressed(); }
 bool btnBPressed() { M5.update(); return M5.BtnB.isPressed(); }
 int batteryPct() { return (int)M5.Power.getBatteryLevel(); }
+void fatal(const char *msg) {
+  BOOT_LOG("FATAL: %s. Halted.", msg);
+  M5.Display.fillScreen(0x0000);
+  M5.Display.setTextColor(0xF800, 0x0000);  // red on black
+  M5.Display.setTextDatum(middle_center);
+  M5.Display.setTextSize(2);
+  M5.Display.drawString("CYD32 FATAL ERROR", CYD32_CX, CYD32_CY - 30);
+  M5.Display.setTextSize(1);
+  M5.Display.drawString(msg, CYD32_CX, CYD32_CY + 4);
+  M5.Display.drawString("Halted. See the serial console.", CYD32_CX, CYD32_CY + 24);
+  for (;;) delay(1000);  // stay on this screen: no reset loop
+}
 }  // namespace hw
 #endif

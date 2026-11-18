@@ -10,6 +10,7 @@ void begin();                       // display, backlight, touch
 bool touch(int16_t &x, int16_t &y); // true while pressed (screen coords)
 void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *rgb565);
 bool bootButtonPressed();           // unsigned-mode hold button, active low
+[[noreturn]] void fatal(const char *msg);  // message on screen + serial, then halt (no reset loop)
 #ifdef CYD32_HW_M5STACK_STOPWATCH
 bool btnAClicked();                 // KEYA short press (BACK)
 bool btnBClicked();                 // KEYB short press (SELECT)

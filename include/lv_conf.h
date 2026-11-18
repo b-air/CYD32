@@ -15,7 +15,11 @@
 #define LV_DPI_DEF 130
 #define LV_USE_OS LV_OS_NONE
 #define LV_DRAW_SW_SUPPORT_I4 1
-#define LV_USE_LOG 0
+#define LV_USE_LOG 1
+#define LV_LOG_LEVEL LV_LOG_LEVEL_ERROR
+#define LV_LOG_PRINTF 1
+#define LV_ASSERT_HANDLER_INCLUDE "lv_assert_hook.h"
+#define LV_ASSERT_HANDLER cyd32_lv_assert_fail(__FILE__, __LINE__);
 #define LV_USE_ASSERT_NULL 1
 #define LV_USE_ASSERT_MALLOC 1
 #define LV_FONT_MONTSERRAT_10 1
