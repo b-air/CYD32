@@ -2,15 +2,20 @@
 /* SPDX-FileCopyrightText: 2026 CYD32 contributors */
 /* Design assets, modified for CYD32. */
 #pragma once
-/* CYD32 — sonar UI palette, RGB565 values + original RGB888 hex */
-#define CYD32_COL_BG        0x0884  /* #081020 background */
-#define CYD32_COL_PANEL     0x1107  /* #102038 panel */
-#define CYD32_COL_GRID      0x2189  /* #203048 grid / header bar */
+#include "cyd32_sonar_theme.h"
+/* CYD32 Y3-d screen palette, RGB565 values + RGB888 hex. The v9 light
+   harmonisation swaps only the background, panel, line and muted tokens for
+   the phosphor greens; the yellow HUD, cyan, red hits and white text stay.
+   The sonar and boot screens use the phosphor theme (cyd32_sonar_theme.h). */
+#define CYD32_COL_BG        CYD32_SONAR_BG_CYD  /* #000A04 (was #081020) */
+#define CYD32_COL_PANEL     CYD32_SONAR_G1      /* #02200E panels, cells, header strip (was #102038) */
+#define CYD32_COL_GRID      CYD32_SONAR_G2      /* #0B5A2A lines, borders, selection (was #203048) */
 #define CYD32_COL_AMBER     0xFD00  /* #F8A000 primary */
 #define CYD32_COL_CYAN      0x07DF  /* #00F8F8 accent */
 #define CYD32_COL_HIT       0xF908  /* #F82040 hit / drone */
-#define CYD32_COL_WATER     0x4B51  /* #486888 miss / secondary */
+#define CYD32_COL_WATER     CYD32_SONAR_G3      /* #19A04A muted labels (was #486888) */
 #define CYD32_COL_OK        0x47E8  /* #40FC40 OK */
+#define CYD32_COL_DRONE     CYD32_SONAR_DRONE   /* #FCEE0A drones only (grid hits, R counter) */
 #define CYD32_COL_WHITE     0xFFFF  /* #F8FCF8 text */
 /* creatures (shared ramps) */
 #define CYD32_COL_OUTLINE   0x1864  /* #180C20 outline */
