@@ -71,9 +71,18 @@ There is no merged image: each release ships four separate files per board
 | boot_app0       | 0xe000      | 0xe000               |
 | firmware (app)  | 0x10000     | 0x10000              |
 
-Both images are built in DIO flash mode (the mode byte in the image header).
-esptool keeps the header's mode by default; if you pass `--flash_mode`, use
-`dio`. The StopWatch env's `qio_opi` memory type does not change the flash
+The image headers carry these flash settings (checked with
+`esptool image-info` on the v0.2.0-test1 bootloader and firmware files):
+
+| Setting         | CYD (ESP32) | StopWatch (ESP32-S3) |
+|-----------------|-------------|----------------------|
+| Flash mode      | dio         | dio                  |
+| Flash frequency | 40m         | 80m                  |
+| Flash size      | 4MB         | 16MB                 |
+
+esptool keeps the header's values by default; pass them explicitly anyway
+(below), and choose the same values in the web flasher. For the web flasher
+steps, see [INSTALL.md](INSTALL.md). The StopWatch env's `qio_opi` memory type does not change the flash
 mode written to the image, and esptool's `--flash_mode` flag does not take
 `qio_opi`.
 
@@ -82,7 +91,7 @@ CYD (ESP32, bootloader at 0x1000):
 ```bash
 pip install esptool
 esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash \
-  --flash_mode dio --flash_size 4MB \
+  --flash_mode dio --flash_freq 40m --flash_size 4MB \
   0x1000 bootloader-cyd.bin 0x8000 partitions-cyd.bin \
   0xe000 boot_app0-cyd.bin 0x10000 firmware-cyd.bin
 ```
@@ -91,7 +100,7 @@ StopWatch (ESP32-S3, bootloader at 0x0, not 0x1000):
 
 ```bash
 esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash \
-  --flash_mode dio --flash_size 16MB \
+  --flash_mode dio --flash_freq 80m --flash_size 16MB \
   0x0 bootloader-m5stack-stopwatch.bin 0x8000 partitions-m5stack-stopwatch.bin \
   0xe000 boot_app0-m5stack-stopwatch.bin 0x10000 firmware-m5stack-stopwatch.bin
 ```
