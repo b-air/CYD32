@@ -7,6 +7,7 @@
 #include <esp_wifi.h>
 #include <WiFi.h>
 #include <string.h>
+#include "boot_log.h"
 
 namespace {
 constexpr uint32_t kWifiSliceMs = 12000, kBleSliceMs = 6000, kHopMs = 350;
@@ -14,7 +15,8 @@ enum Phase { OFF, WIFI_PH, BLE_PH } phase = OFF;
 uint32_t phaseStart = 0, lastHop = 0;
 uint8_t channel = 1;
 bool stopped = false;
-bool wifiOk = false, bleInitOk = false, bleStartOk = false;
+bool wifiOk = false, wifiTried = false, wifiReady = false, bleInitOk = false, bleStartOk = false;
+esp_err_t wifiErr = ESP_OK;  // last Wi-Fi bring-up / promiscuous error
 
 // ASTM F3411 Remote ID over Wi-Fi beacon: vendor IE with OUI FA:0B:BC, type 0x0D.
 bool hasRemoteIdIe(const uint8_t *ies, int len) {
@@ -123,13 +125,52 @@ class BleCb : public NimBLEAdvertisedDeviceCallbacks {
 };
 BleCb bleCb;
 
-void startWifi() {
-  WiFi.mode(WIFI_MODE_NULL);
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
+// Bring the Wi-Fi driver up ONCE, receive-only. WiFi.mode(WIFI_MODE_NULL) on a
+// driver that was never started is a no-op in Arduino-ESP32 (getMode() is
+// already NULL), so promiscuous mode used to fail and Wi-Fi never ran.
+// Nothing here transmits:
+//  - persistent(false): driver config kept in RAM, never written to NVS;
+//  - setAutoReconnect(false): Arduino's STA_DISCONNECTED handler never calls
+//    WiFi.begin() (and we never call begin/connect/scanNetworks);
+//  - WiFi.mode(WIFI_STA) only runs esp_wifi_init/set_mode/start: an idle,
+//    unassociated station does not scan, probe or associate on its own;
+//  - the RAM STA config is cleared directly (no esp_wifi_disconnect(), which
+//    could raise a disconnect event);
+//  - esp_wifi_set_mode(WIFI_MODE_NULL) then drops the station interface while
+//    the driver stays started, which is all promiscuous mode needs. If the
+//    driver refuses promiscuous mode in NULL mode, we fall back to the idle
+//    station, which is just as silent.
+void initWifi() {
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  if (!WiFi.mode(WIFI_STA)) { wifiErr = ESP_FAIL; BOOT_LOG("wifi: driver start failed"); return; }
+  wifi_config_t blank = {};
+  esp_err_t e = esp_wifi_set_config(WIFI_IF_STA, &blank);
+  BOOT_LOG("wifi: clear STA config = %s (%d)", esp_err_to_name(e), (int)e);
   wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
-  esp_wifi_set_promiscuous_filter(&filt);
+  e = esp_wifi_set_promiscuous_filter(&filt);
+  BOOT_LOG("wifi: mgmt-only filter = %s (%d)", esp_err_to_name(e), (int)e);
   esp_wifi_set_promiscuous_rx_cb(&promiscCb);
-  wifiOk = esp_wifi_set_promiscuous(true) == ESP_OK;
+  e = esp_wifi_set_mode(WIFI_MODE_NULL);
+  BOOT_LOG("wifi: set_mode(NULL) = %s (%d)", esp_err_to_name(e), (int)e);
+  e = esp_wifi_set_promiscuous(true);
+  BOOT_LOG("wifi: promiscuous probe in NULL mode = %s (%d)", esp_err_to_name(e), (int)e);
+  if (e != ESP_OK) {
+    const esp_err_t m = esp_wifi_set_mode(WIFI_MODE_STA);  // idle station fallback
+    e = esp_wifi_set_promiscuous(true);
+    BOOT_LOG("wifi: fallback idle STA: set_mode = %s, promiscuous = %s (%d)", esp_err_to_name(m), esp_err_to_name(e), (int)e);
+  }
+  esp_wifi_set_promiscuous(false);
+  wifiReady = e == ESP_OK;
+  wifiErr = e;
+}
+void startWifi() {
+  wifiTried = true;
+  // Later slices only toggle promiscuous mode and the channel.
+  const esp_err_t e = wifiReady ? esp_wifi_set_promiscuous(true) : wifiErr;
+  if (e != wifiErr || !wifiOk) BOOT_LOG("wifi: promiscuous on = %s (%d)", esp_err_to_name(e), (int)e);
+  wifiErr = e;
+  wifiOk = e == ESP_OK;
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
   phase = WIFI_PH; phaseStart = lastHop = millis();
 }
@@ -152,7 +193,10 @@ void begin() {
   // Exercise both radios once at boot so the self-test covers them.
   startBle();
   stopBle();
+  initWifi();
   startWifi();
+  BOOT_LOG("scanner: wifi=%s (%s) ble init=%d scan=%d", wifiOk ? "ok" : "FAILED", esp_err_to_name(wifiErr),
+           (int)bleInitOk, (int)bleStartOk);
 }
 void loop() {
   if (stopped) return;
@@ -177,4 +221,5 @@ void stop() {
 }
 bool wifiActive() { return phase == WIFI_PH; }
 bool healthy() { return wifiOk && bleInitOk && bleStartOk; }
+bool wifiFailed() { return wifiTried && !wifiOk; }
 }

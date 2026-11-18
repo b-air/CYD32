@@ -17,4 +17,6 @@ bool wifiActive();
 // Self-test: Wi-Fi promiscuous start and NimBLE init succeeded, and the BLE
 // scan has been started at least once.
 bool healthy();
+// Wi-Fi was started but promiscuous mode is not running: the header shows "W!".
+bool wifiFailed();
 }

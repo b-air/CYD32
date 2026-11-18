@@ -34,7 +34,7 @@ lv_color_t C(uint16_t v) {
 
 lv_obj_t *scr, *content, *tabbar, *banner, *statusBand, *statusBat;
 lv_obj_t *bootArc, *bootMsg[3], *bootTitle;
-ui::Screen cur = ui::BOOT, prevSc = ui::SONAR;
+ui::Screen cur = ui::BOOT, prevSc = ui::HOME;
 bool updateReq = false, unsignedBanner = false;
 int unsignedDecision = -1;
 int menuSel = 0;
@@ -139,7 +139,13 @@ lv_obj_t *mkArc(lv_obj_t *p, int x, int y, int s, int a0, int a1, uint16_t bg, u
 }
 
 void refreshStatus() {
-  if (statusBand) lv_label_set_text(statusBand, scanner::wifiActive() ? "2.4G" : "BLE");
+  if (statusBand) {
+    // "W!" in red when the Wi-Fi scanner failed to start (same slot as "2.4G").
+    const bool wFail = scanner::wifiFailed();
+    lv_label_set_text(statusBand, wFail ? "W!" : scanner::wifiActive() ? "2.4G" : "BLE");
+    static int lastFail = -1;
+    if (lastFail != (int)wFail) { lastFail = wFail; lv_obj_set_style_text_color(statusBand, C(wFail ? COL_HIT : COL_CYAN), 0); }
+  }
   if (statusBat) {
     char t[8];
     snprintf(t, sizeof t, "%d%%", hw::batteryPct());
@@ -1145,10 +1151,10 @@ void buildTorpedo() {
 void goBack() {
   if (cur == ui::BOOT || cur == ui::OTA) return;
   if (cur == ui::UNSIGNED_CONFIRM) { unsignedDecision = 0; return; }
-  if (cur == ui::SONAR) return;
+  if (cur == ui::HOME) return;
   if (cur == ui::EVOLUTION) { ui::show(ui::CREATURE); return; }
   if (cur == ui::TORPEDO) { ui::show(ui::GRID); return; }
-  ui::show(prevSc == cur ? ui::SONAR : prevSc);
+  ui::show(prevSc == cur ? ui::HOME : prevSc);
 }
 void doSelect() {
   switch (cur) {

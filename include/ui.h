@@ -7,6 +7,8 @@
 #include <stdint.h>
 namespace ui {
 enum Screen : uint8_t { BOOT, SONAR, GRID, CREATURE, MENU, DETAILS, TRACKERS, DRONES, WARDRIVING, UPDATE_CONFIRM, OTA, ABOUT, TORPEDO, UNSIGNED_CONFIRM, COUNTERS, EVOLUTION };
+// Screen shown after boot, and where BACK ends up (creature hatches on first show).
+constexpr Screen HOME = CREATURE;
 void begin();                 // builds the boot screen
 void show(Screen s);
 void refresh();               // call ~4x per second

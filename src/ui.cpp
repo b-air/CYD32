@@ -11,6 +11,7 @@
 #include "cyd32_palette.h"
 #include "creature.h"
 #include "detections.h"
+#include "scanner.h"
 #include "fw_status.h"
 #include "ota_portal.h"
 #include "privacy.h"
@@ -636,7 +637,10 @@ void buildUnsignedConfirm() {
 }
 void refreshHeader() {
   const det::Counts c = det::counts();
-  char t[48]; snprintf(t, sizeof t, "CYD32 W%u B%u R%u", c.wifi, c.ble, c.drone);
+  char t[48];
+  // "W!" instead of the Wi-Fi count when the Wi-Fi scanner failed to start.
+  if (scanner::wifiFailed()) snprintf(t, sizeof t, "CYD32 W! B%u R%u", c.ble, c.drone);
+  else snprintf(t, sizeof t, "CYD32 W%u B%u R%u", c.wifi, c.ble, c.drone);
   lv_label_set_text(headerLbl, t);
   lv_label_set_text(statusLbl, fw_status::kindStr());
   if (unsignedBanner || fw_status::kind() == fw_status::UNSIGNED) lv_obj_remove_flag(banner, LV_OBJ_FLAG_HIDDEN);

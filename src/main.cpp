@@ -202,7 +202,7 @@ void setup() {
     ui::setUnsignedBanner(unsignedArmed);
   }
   BOOT_STEP("scanner", scanner::begin());
-  BOOT_STEP("ui sonar", ui::show(ui::SONAR));
+  BOOT_STEP("ui home", ui::show(ui::HOME));
   BOOT_LOG("setup done in %lu ms, heap free=%u", (unsigned long)(millis() - bootMs), (unsigned)ESP.getFreeHeap());
 }
 
