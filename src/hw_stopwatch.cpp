@@ -21,7 +21,7 @@ namespace {
 // clicks and touch edges that were seen by another getter's update. Edges are
 // latched here and consumed by btnAClicked() / btnBClicked().
 uint32_t lastPollMs = 0;
-bool polled = false, latchA = false, latchB = false;
+bool polled = false, latchA = false, latchB = false, latchAH = false, latchBH = false;
 void poll() {
   const uint32_t now = millis();
   if (polled && now - lastPollMs < 8) return;
@@ -30,6 +30,10 @@ void poll() {
   M5.update();
   if (M5.BtnA.wasClicked()) latchA = true;
   if (M5.BtnB.wasClicked()) latchB = true;
+  // Long press: M5Unified reports wasHold() once when a press reaches its hold
+  // threshold (500 ms); that press then never reports wasClicked().
+  if (M5.BtnA.wasHold()) latchAH = true;
+  if (M5.BtnB.wasHold()) latchBH = true;
 }
 // Touch serial log: press / release edges, plus one line every 500 ms while held.
 bool wasDown = false;
@@ -99,6 +103,9 @@ bool bootButtonPressed() {
 }
 bool btnAClicked() { poll(); const bool c = latchA; latchA = false; return c; }
 bool btnBClicked() { poll(); const bool c = latchB; latchB = false; return c; }
+bool btnAHeld() { poll(); const bool c = latchAH; latchAH = false; return c; }
+bool btnBHeld() { poll(); const bool c = latchBH; latchBH = false; return c; }
+void clearButtons() { poll(); latchA = latchB = latchAH = latchBH = false; }
 bool btnAPressed() { poll(); return M5.BtnA.isPressed(); }
 bool btnBPressed() { poll(); return M5.BtnB.isPressed(); }
 int batteryPct() { return (int)M5.Power.getBatteryLevel(); }

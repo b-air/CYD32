@@ -17,6 +17,9 @@
 #include "privacy.h"
 #include "ui_layout.h"
 #include "ui_radar.h"
+#include "ui_common.h"
+#include "rssi_track.h"
+#include "signatures.h"
 
 namespace {
 lv_color_t C(uint16_t v) { return lv_color_make(((v >> 11) & 0x1f) << 3, ((v >> 5) & 0x3f) << 2, (v & 0x1f) << 3); }
@@ -39,7 +42,26 @@ lv_obj_t *hdr[7], *tabBtn[4];
 bool phosphor = false;
 lv_obj_t *gridMarks[80], *gridLog;
 lv_obj_t *creaImg, *creaInfo, *creaBar, *flash;
-lv_obj_t *detList, *detRows[14];
+lv_obj_t *detRows[14], *detHit, *detBody;
+// Selected device (sonar tap, grid tap, list row) for DETAILS; tracked = pinned on the sonar.
+det::Entry selEnt;
+bool haveSel = false, hasTracked = false;
+uint32_t trackedId = 0;
+// One snapshot scratch for every view (LVGL task only). The view buffers are
+// heap, allocated once in ui::begin(): the CYD static DRAM segment is full.
+det::Entry *gSnap = nullptr;
+// Previous screen for the on-screen BACK buttons (the CYD has no keys).
+ui::Screen prevSc = ui::SONAR;
+lv_timer_t *sonarTimer = nullptr;
+constexpr int kSonarMax = 24;
+det::Entry *sonarEnt = nullptr;
+radar::Contact *sonarRc = nullptr;
+int sonarN = 0, sonarSel = -1;
+// Dashboard / lists
+constexpr int kListRows = 9;
+lv_obj_t *listRows[kListRows], *listEmpty, *dashTop, *dashW[5], *dashB[5], *dashLog[3], *dashChip[4];
+det::Entry listEnt[kListRows];
+int listN = 0;
 lv_obj_t *otaQr, *otaInfo, *otaBar, *otaMsg, *otaConfirm;
 // easter egg
 const char *kEgg[4] = {"A1", "B2", "C3", "D4"};
@@ -226,6 +248,11 @@ radar::Style cydStyle(bool boot) {
     s.echoR = CYD_SONAR_ECHO_R;
     s.boxSize = CYD_SONAR_TARGET_BOX;
     s.boxW = 1;
+    // Rings are RSSI steps (rssi_track.h): ring 1 = -50 dBm is drawn as the
+    // dotted CLOSE ring, plus a VERY CLOSE ring at -42 dBm.
+    s.rings[0] = 0;
+    s.closeR = cyd_sonar_ring_r[0];
+    s.veryCloseR = (int16_t)(s.rim * (-35 - rssi::kVeryCloseDbm) / 60);
   }
   return s;
 }
@@ -269,60 +296,89 @@ void buildBoot() {
 }
 
 // --- v9 phosphor sonar -------------------------------------------------------
+void selectEntry(const det::Entry &e) { selEnt = e; haveSel = true; }
+void refreshSonarContacts();
+void sonarTick(lv_timer_t *) { refreshSonarContacts(); }
+// Tap on the scope: the contact under the finger (else the selected one) opens DETAILS.
+void onScopeTap(lv_event_t *ev) {
+  lv_point_t p;
+  lv_indev_get_point(lv_indev_active(), &p);
+  lv_area_t a;
+  lv_obj_get_coords(radarObj, &a);
+  const radar::Style s = cydStyle(false);
+  const int x = p.x - a.x1 - s.cx, y = p.y - a.y1 - s.cy;
+  int best = -1, bd = 16 * 16;
+  for (int i = 0; i < sonarN; i++) {
+    const int dx = sonarRc[i].dx - x, dy = sonarRc[i].dy - y, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best < 0) best = sonarSel;
+  if (best < 0) return;
+  selectEntry(sonarEnt[best]);
+  ui::show(ui::DETAILS);
+}
 void buildSonar() {
   makeStage(kTop, CYD_BUTTON_Y - kTop);
   radarObj = radar::create(stage, 0, 0, CYD32_SCREEN_W, CYD_BUTTON_Y - kTop, cydStyle(false));
+  lv_obj_add_flag(radarObj, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(radarObj, onScopeTap, LV_EVENT_CLICKED, nullptr);
   stageLabel("TGT", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_LEFT, 5, 4);
   hudTgt = stageLabel("00", &lv_font_unscii_16, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 5, 13);
   stageLabel("DRN", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_RIGHT, -5, 4);
   hudDrn = stageLabel("00", &lv_font_unscii_16, CYD32_SONAR_DRONE, LV_ALIGN_TOP_RIGHT, -5, 13);
-  stageLabel("RX ONLY", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 5, 152);
-  stageLabel("PASSIVE", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, 5, 162);
-  for (int i = 0; i < 3; i++) hudSel[i] = stageLabel("", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_RIGHT, -5, 152 + i * 10);
+  stageLabel("RX ONLY", &lv_font_unscii_8, CYD32_SONAR_G4, LV_ALIGN_TOP_LEFT, 5, 142);
+  stageLabel("ANGLE IS", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, 5, 152);
+  stageLabel("INDICATIVE", &lv_font_unscii_8, CYD32_SONAR_G2, LV_ALIGN_TOP_LEFT, 5, 162);
+  for (int i = 0; i < 3; i++) hudSel[i] = stageLabel("", &lv_font_unscii_8, CYD32_SONAR_G3, LV_ALIGN_TOP_RIGHT, -5, 142 + i * 10);
+  // Positions refresh at ~7 Hz (RSSI is smoothed per packet in det::report).
+  sonarTimer = lv_timer_create(sonarTick, 150, nullptr);
 }
-// Contacts sit in the same pseudonymous grid cell as on the GRID screen. The
-// position is a hash of the address, not a direction: there is no direction
-// finding, so the HUD shows the channel instead of a bearing.
-void refreshSonar() {
-  if (!radarObj) return;
-  static det::Entry e[24];
-  static radar::Contact rc[24];
-  const int n = det::snapshot(e, 24);
+// Radius = smoothed RSSI (dotted CLOSE ring = -50 dBm, VERY CLOSE = -42 dBm),
+// angle = the indicative bearing (FNV-1a of the address, the same on every
+// CYD32). There is no direction finding.
+void refreshSonarContacts() {
+  if (!radarObj || !sonarEnt || !sonarRc) return;
+  const uint32_t now = lv_tick_get();
+  sonarN = det::snapshot(sonarEnt, kSonarMax, true);
   const radar::Style s = cydStyle(false);
-  int sel = -1, labels = 0;
-  int best = -100000;  // selected: strongest drone, else strongest contact
-  for (int i = 0; i < n; i++) {
-    const int score = (e[i].kind == det::DRONE ? 1000 : 0) + e[i].rssi;
+  int sel = -1, best = -100000, labels = 0;
+  for (int i = 0; i < sonarN; i++) {
+    // Selected: the pinned target if visible, else strongest drone, else strongest contact.
+    const int score = (hasTracked && sonarEnt[i].id == trackedId ? 100000 : 0) + (sonarEnt[i].kind == det::DRONE ? 1000 : 0) + det::smoothed(sonarEnt[i]);
     if (score > best) { best = score; sel = i; }
   }
-  for (int i = 0; i < n; i++) {
-    const uint32_t h = mix(e[i].id), slot = h % 80;
-    radar::Contact &c = rc[i];
-    memset(&c, 0, sizeof c);
-    radar::cellOffset(s, (int)(slot % 10), (int)(slot / 10), c.dx, c.dy);
-    c.kind = e[i].kind == det::DRONE ? radar::DRONE : e[i].kind == det::BLE ? radar::BLE : radar::WIFI;
-    c.seed = h;
-    if (i == sel || c.kind == radar::DRONE || labels < 6) {
-      c.id[0] = (char)('A' + slot % 10); c.id[1] = (char)('1' + slot / 10);
+  for (int i = 0; i < sonarN; i++) {
+    uic::toContact(s, sonarEnt[i], now, sonarRc[i]);
+    if (i == sel || sonarRc[i].kind == radar::DRONE || labels < 5) {
+      uic::cellName(sonarEnt[i].cell, sonarRc[i].id);
       if (i != sel) labels++;
     }
   }
-  radar::setContacts(radarObj, rc, n, sel);
+  sonarSel = sel;
+  radar::setContacts(radarObj, sonarRc, sonarN, sel);
+}
+void refreshSonar() {
+  if (!radarObj) return;
+  refreshSonarContacts();
   const det::Counts cnt = det::counts();
   char t[24];
   snprintf(t, sizeof t, "%02u", (unsigned)LV_MIN(cnt.wifi + cnt.ble, 99));
   lv_label_set_text(hudTgt, t);
   snprintf(t, sizeof t, "%02u", (unsigned)LV_MIN(cnt.drone, 99));
   lv_label_set_text(hudDrn, t);
-  if (sel >= 0) {
-    const bool drone = e[sel].kind == det::DRONE;
-    snprintf(t, sizeof t, "SEL %s", rc[sel].id);
+  if (sonarSel >= 0) {
+    const det::Entry &e = sonarEnt[sonarSel];
+    const bool drone = e.kind == det::DRONE;
+    const int sm = det::smoothed(e);
+    char cell[3];
+    uic::cellName(e.cell, cell);
+    snprintf(t, sizeof t, "SEL %s%s", cell, sm >= rssi::kCloseDbm ? " CLOSE" : "");
     lv_label_set_text(hudSel[0], t);
     lv_obj_set_style_text_color(hudSel[0], C(drone ? CYD32_SONAR_DRONE : CYD32_SONAR_G4), 0);
-    if (e[sel].kind == det::WIFI) snprintf(t, sizeof t, "WIFI CH%u", e[sel].channel);
+    if (e.kind == det::WIFI) snprintf(t, sizeof t, "WIFI CH%u", e.channel);
     else snprintf(t, sizeof t, "%s", drone ? "REMOTE ID" : "BLE");
     lv_label_set_text(hudSel[1], t);
-    snprintf(t, sizeof t, "%dDBM", e[sel].rssi);
+    snprintf(t, sizeof t, "%dDBM %03u", sm, (unsigned)e.bearing);
     lv_label_set_text(hudSel[2], t);
   } else {
     lv_label_set_text(hudSel[0], "NO CONTACT");
@@ -344,6 +400,7 @@ void eggStep(const char *cell) {
     if (eggPos) eggStart = nowMs;
   }
 }
+// Tap a cell: easter-egg step; an occupied cell opens that device's DETAILS.
 void onGridTouch(lv_event_t *e) {
   lv_point_t p;
   lv_indev_get_point(lv_indev_active(), &p);
@@ -352,13 +409,20 @@ void onGridTouch(lv_event_t *e) {
   if (c < 0 || c > 9 || r < 0 || r > 7) return;
   char cell[3] = {(char)('A' + c), (char)('1' + r), 0};
   eggStep(cell);
+  if (cur != ui::GRID || !gSnap) return;
+  det::Entry *en = gSnap;
+  const int n = det::snapshot(en, det::kMax, true);
+  int best = -1;
+  for (int i = 0; i < n; i++)
+    if (en[i].cell == c + r * 10 && (best < 0 || det::smoothed(en[i]) > det::smoothed(en[best]))) best = i;
+  if (best >= 0) { selectEntry(en[best]); ui::show(ui::DETAILS); }
 }
 void buildGrid() {
   for (int c = 0; c < 10; c++) { char s[2] = {(char)('A' + c), 0}; lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_AMBER), kGx + c * kCw + 8, 2); }
   lv_obj_t *g = box(content, kGx, kGy, 10 * kCw, 8 * kCh, CYD32_COL_PANEL);
   lv_obj_set_style_border_color(g, C(CYD32_COL_GRID), 0); lv_obj_set_style_border_width(g, 1, 0);
   lv_obj_add_flag(g, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(g, onGridTouch, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(g, onGridTouch, LV_EVENT_CLICKED, nullptr);
   for (int r = 0; r < 8; r++) {
     char s[2] = {(char)('1' + r), 0};
     lv_obj_set_pos(label(content, s, &lv_font_unscii_8, CYD32_COL_AMBER), 10, kGy + r * kCh + 5);
@@ -370,21 +434,31 @@ void buildGrid() {
   gridLog = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
   lv_obj_set_pos(gridLog, 266, 12);
   lv_obj_set_width(gridLog, 56);
+  lv_obj_t *h = label(content, "TAP A CELL: DETAIL  ANGLE INDICATIVE", &lv_font_unscii_8, CYD32_SONAR_G2);
+  lv_obj_set_pos(h, 4, kGy + 8 * kCh + 8);
 }
+// Cells come from bearing::cellFromMac (same on every CYD32 and the StopWatch).
 void refreshGrid() {
-  static det::Entry e[det::kMax];
-  const int n = det::snapshot(e, det::kMax);
+  det::Entry *e = gSnap;
+  if (!e) return;
+  const int n = det::snapshot(e, det::kMax, true);
   uint8_t mark[80] = {0};
-  for (int i = 0; i < n; i++) { uint8_t &m = mark[mix(e[i].id) % 80]; m = e[i].kind == det::DRONE ? 2 : (m ? m : 1); }
+  for (int i = 0; i < n; i++) { uint8_t &m = mark[e[i].cell % 80]; m = e[i].kind == det::DRONE ? 2 : (m ? m : 1); }
   for (int i = 0; i < 80; i++) {
     lv_label_set_text(gridMarks[i], mark[i] ? "X" : ".");
     lv_obj_set_style_text_color(gridMarks[i], C(mark[i] == 2 ? CYD32_COL_DRONE : mark[i] ? CYD32_COL_HITX : CYD32_COL_GRID), 0);
   }
-  char t[96] = "LOG\n"; char id[9];
-  for (int i = 0; i < n && i < 5; i++) {
-    privacy::idToStr(e[i].id, id); id[5] = 0;
-    char l[16]; snprintf(l, sizeof l, "%c%s\n", e[i].kind == det::WIFI ? 'W' : e[i].kind == det::BLE ? 'B' : 'D', id);
+  // Strongest five (smoothed): kind letter, cell, dBm.
+  char t[96] = "LOG\n";
+  for (int k = 0; k < 5 && k < n; k++) {
+    int b = -1;
+    for (int i = 0; i < n; i++) if (e[i].trailN != 0xFF && (b < 0 || det::smoothed(e[i]) > det::smoothed(e[b]))) b = i;
+    if (b < 0) break;
+    char cell[3], l[16];
+    uic::cellName(e[b].cell, cell);
+    snprintf(l, sizeof l, "%c%s%d\n", e[b].kind == det::WIFI ? 'W' : e[b].kind == det::BLE ? 'B' : 'D', cell, det::smoothed(e[b]));
     strncat(t, l, sizeof t - strlen(t) - 1);
+    e[b].trailN = 0xFF;  // scratch copy: mark as listed
   }
   lv_label_set_text(gridLog, t);
 }
@@ -411,6 +485,8 @@ constexpr uint32_t kGrowMs = 560, kPopMs = 560;
 // baby then grows with unique detections (creature::size()).
 constexpr uint32_t kEggIdleMs = 3000;
 uint32_t eggHoldUntil = 0;
+// Egg: the first hatch frame, held until the first detection (creature_rules.h).
+bool eggWait = false;
 
 float backEase(float t) {
   if (t <= 0) return 0;
@@ -608,7 +684,7 @@ void startHappy() {
 void animTick(lv_timer_t *t) {
   nowMs = lv_tick_get();
   if (popping && popStart && nowMs - popStart >= kPopMs) { popping = 0; popStart = 0; }
-  const bool eggHold = playingHatch && (int32_t)(nowMs - eggHoldUntil) < 0;
+  const bool eggHold = playingHatch && (eggWait || (int32_t)(nowMs - eggHoldUntil) < 0);
   if (i4Buf && anim && curSpec && anim->ms && anim != curSpec->cth_keys && !eggHold) {
     if ((uint16_t)(animFrame + 1) < anim->n) {
       applyDelta(anim->delta + anim->off[animFrame], deltaSlice(anim, animFrame));
@@ -638,7 +714,8 @@ void buildCreature() {
   memset(&rgbDsc, 0, sizeof rgbDsc);
   playingHappy = false;
   reactReq = false;
-  if (creature::consumeHatched()) {
+  eggWait = !creature::hatched();
+  if (eggWait || creature::consumeHatched()) {
     playingHatch = true;
     setAnim(curSpec->hatch, 0);
     eggHoldUntil = lv_tick_get() + kEggIdleMs;
@@ -664,6 +741,7 @@ void refreshCreature() {
   const uint8_t s = creature::size();
   const uint8_t cth = creature::cthulhuStage();
   const uint32_t next = creature::nextSizeAt();
+  const uint32_t near3 = creature::recentCount();
   const uint32_t uniq = creature::uniqueCount();
   const uint32_t drones = creature::droneCount();
   char traits[48] = "";
@@ -676,16 +754,25 @@ void refreshCreature() {
   }
   if (!traits[0]) strncpy(traits, "-", sizeof traits - 1);
   char t[192];
-  snprintf(t, sizeof t, "%s\nsize %u\nuniq %lu\nRID  %lu\nnext %s%lu\nCth  %u\nXP   %lu\n%s",
-           creature::name(), s, (unsigned long)uniq, (unsigned long)drones,
-           next ? "" : "max ", (unsigned long)next, cth, (unsigned long)creature::xp(), traits);
+  if (s == 0)
+    snprintf(t, sizeof t, "%s\nEGG\nhatches at\nthe first\ndevice\n\n3 min %lu", creature::name(), (unsigned long)near3);
+  else
+    snprintf(t, sizeof t, "%s\nsize %u/4\n3 min %lu\nnext %s%lu\nRID  %lu\nCth  %u\nXP   %lu\n%s",
+             creature::name(), s, (unsigned long)near3, next ? "" : "max ", (unsigned long)(next ? next : near3),
+             (unsigned long)drones, cth, (unsigned long)creature::xp(), traits);
   lv_label_set_text(creaInfo, t);
+  // Bar: progress inside the current size band of the 3-minute count.
   const uint32_t lo = creature::sizeFloor();
-  int pct = next ? (int)(100 * (uniq - lo) / (next - lo)) : 100;
+  int pct = next ? (int)(100 * ((int)near3 - (int)lo) / (int)(next - lo)) : 100;
   if (pct < 0) pct = 0; if (pct > 100) pct = 100;
   lv_bar_set_value(creaBar, pct, LV_ANIM_OFF);
+  if (eggWait && creature::hatched()) {  // the egg hatches on screen
+    eggWait = false;
+    creature::consumeHatched();
+    eggHoldUntil = nowMs;
+  }
   if (uniq > lastUniques) { lastUniques = uniq; reactReq = true; }
-  if (creature::consumeGrew()) {
+  if (creature::consumeSizeChanged()) {  // grows or shrinks with the 3-minute window
     growFrom = growTo;
     growTo = CYD32_SIZE_ZOOM[s ? s - 1 : 0];
     growStart = nowMs ? nowMs : lv_tick_get();
@@ -696,43 +783,243 @@ void refreshCreature() {
   if (fresh) { popping = fresh; popStart = nowMs ? nowMs : lv_tick_get(); }
 }
 
+// MENU: the same 8-entry tree as the StopWatch (ui_common.cpp), 2 x 4 buttons.
 void buildMenu() {
-#ifdef CYD32_HW_M5STACK_STOPWATCH
-  // No microSD on the StopWatch: wardriving export is compiled out.
-  struct { const char *t; ui::Screen s; } items[5] = {
-      {"Details", ui::DETAILS}, {"Trackers", ui::TRACKERS}, {"Drones", ui::DRONES},
-      {"Update", ui::UPDATE_CONFIRM}, {"About", ui::ABOUT}};
-  const int n = 5;
-#else
-  struct { const char *t; ui::Screen s; } items[6] = {
-      {"Details", ui::DETAILS}, {"Trackers", ui::TRACKERS}, {"Drones", ui::DRONES},
-      {"Wardriving", ui::WARDRIVING}, {"Update", ui::UPDATE_CONFIRM}, {"About", ui::ABOUT}};
-  const int n = 6;
-#endif
-  for (int i = 0; i < n; i++)
-    button(content, items[i].t, 10 + (i % 2) * 155, 8 + (i / 2) * 58, 145, 48, onShow, (void *)(intptr_t)items[i].s);
-}
-void buildDetails() {
-  label(content, "VISIBLE NOW (salted ids, reset at boot)", &lv_font_unscii_8, CYD32_COL_AMBER);
-  for (int i = 0; i < 14; i++) {
-    detRows[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
-    lv_obj_set_pos(detRows[i], 0, 14 + i * 10);
+  for (int i = 0; i < uic::kMenuN; i++) {
+    lv_obj_t *b = button(content, uic::kMenuTxt[i], 8 + (i % 2) * 156, 6 + (i / 2) * 44, 148, 38, onShow,
+                         (void *)(intptr_t)uic::kMenuScr[i], CYD32_SONAR_G4);
+    lv_obj_set_style_bg_color(b, C(CYD32_SONAR_BG_CYD), 0);
+    lv_obj_set_style_border_color(b, C(CYD32_SONAR_G2), 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_16, 0);
   }
-  detList = detRows[0];
+}
+void onBack(lv_event_t *) { ui::show(prevSc); }
+void onTrack(lv_event_t *) {
+  if (haveSel) { trackedId = selEnt.id; hasTracked = true; }
+  ui::show(ui::SONAR);
+}
+void onDetNext(lv_event_t *) {
+  det::Entry *e = gSnap;
+  if (!e) return;
+  const int n = det::snapshot(e, det::kMax, true);
+  const int i = uic::nextClockwise(e, n, selEnt.id, haveSel);
+  if (i >= 0) selectEntry(e[i]);
+  ui::refresh();
+}
+// DEVICE DETAIL: one device (from the sonar, the grid, a list or the dashboard);
+// NEXT steps clockwise by indicative angle, TRACK pins it on the sonar.
+void buildDetails() {
+  detHit = label(content, "", &lv_font_montserrat_16, CYD32_SONAR_G4);
+  lv_obj_set_pos(detHit, 8, 4);
+  detBody = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+  lv_obj_set_pos(detBody, 8, 30);
+  lv_obj_set_width(detBody, 304);
+  button(content, "BACK", 8, 140, 96, 36, onBack, nullptr, CYD32_SONAR_G4);
+  button(content, "NEXT", 112, 140, 96, 36, onDetNext, nullptr, CYD32_SONAR_G4);
+  button(content, "TRACK", 216, 140, 96, 36, onTrack, nullptr, CYD32_SONAR_G4);
 }
 void refreshDetails() {
-  static det::Entry e[14];
-  const int n = det::snapshot(e, 14);
-  char id[9];
-  for (int i = 0; i < 14; i++) {
-    if (i >= n) { lv_label_set_text(detRows[i], i == 0 ? "nothing yet..." : ""); continue; }
-    privacy::idToStr(e[i].id, id);
-    char l[48];
-    snprintf(l, sizeof l, "%-5s %s %4d dBm ch%-2u %lus", e[i].kind == det::WIFI ? "WIFI" : e[i].kind == det::BLE ? "BLE" : "RID",
-             id, e[i].rssi, e[i].channel, (unsigned long)((nowMs - e[i].lastSeen) / 1000));
-    lv_label_set_text(detRows[i], l);
-    // Drones (Remote ID) in #FCEE0A, the other rows stay white.
-    lv_obj_set_style_text_color(detRows[i], C(e[i].kind == det::DRONE ? CYD32_COL_DRONE : CYD32_COL_WHITE), 0);
+  det::Entry *e = gSnap;
+  const int n = e ? det::snapshot(e, det::kMax) : 0;
+  if (!haveSel) {  // nothing picked yet: the strongest device
+    int b = -1;
+    for (int i = 0; i < n; i++) if (b < 0 || det::smoothed(e[i]) > det::smoothed(e[b])) b = i;
+    if (b >= 0) selectEntry(e[b]);
+  } else {
+    for (int i = 0; i < n; i++) if (e[i].id == selEnt.id && e[i].kind == selEnt.kind) { selEnt = e[i]; break; }
+  }
+  if (!haveSel) {
+    lv_label_set_text(detHit, "DEVICE DETAIL");
+    lv_label_set_text(detBody, "Nothing seen yet.");
+    return;
+  }
+  const bool drone = selEnt.kind == det::DRONE;
+  const int sm = det::smoothed(selEnt);
+  char t[320], id[9], cell[3], tags[32], ch[12] = "";
+  snprintf(t, sizeof t, "%s  %s", drone ? "HIT! DRONE" : uic::kindName(selEnt.kind), rssi::zone(sm));
+  lv_label_set_text(detHit, t);
+  lv_obj_set_style_text_color(detHit, C(drone ? CYD32_COL_DRONE : CYD32_SONAR_G4), 0);
+  privacy::idToStr(selEnt.id, id);
+  uic::cellName(selEnt.cell, cell);
+  uic::badgeStr(selEnt.badges, tags, sizeof tags, true);
+  if (selEnt.kind == det::WIFI) snprintf(ch, sizeof ch, "  CH %u", selEnt.channel);
+  snprintf(t, sizeof t,
+           "CELL   %s%s\nRSSI   %d dBm  (avg %d)\nANGLE  %03u  (indicative, not a\n       direction: hash of the address)\n"
+           "TAGS   %s\nID     %s  (salted per boot)\nSEEN   %lu s ago",
+           cell, ch, selEnt.rssi, sm, (unsigned)selEnt.bearing, tags[0] ? tags : "-", id,
+           (unsigned long)((nowMs - selEnt.lastSeen) / 1000));
+  lv_label_set_text(detBody, t);
+}
+
+// Rows shared by the TRACKERS / DRONES screens (tap a row: DEVICE DETAIL).
+void onListRow(lv_event_t *e) {
+  const int i = (int)(intptr_t)lv_event_get_user_data(e);
+  if (i >= listN) return;
+  selectEntry(listEnt[i]);
+  ui::show(ui::DETAILS);
+}
+void buildList(bool drones) {
+  lv_obj_t *t = label(content, drones ? "DRONES  REMOTE ID (ASTM F3411)" : "TRACKERS  TRK / META / FLOCK", &lv_font_montserrat_14,
+                      drones ? CYD32_SONAR_DRONE : CYD32_SONAR_G4);
+  lv_obj_set_pos(t, 6, 3);
+  for (int i = 0; i < kListRows; i++) {
+    listRows[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_set_pos(listRows[i], 6, 24 + i * 15);
+    lv_obj_set_size(listRows[i], 308, 14);
+    lv_obj_add_flag(listRows[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(listRows[i], onListRow, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+  }
+  listEmpty = label(content, "", &lv_font_montserrat_14, CYD32_SONAR_G3);
+  lv_obj_align(listEmpty, LV_ALIGN_TOP_MID, 0, 70);
+  lv_obj_t *f = label(content, drones ? "ID / position fields: not decoded yet" : "Strongest first. Tap a row: detail",
+                      &lv_font_unscii_8, CYD32_SONAR_G2);
+  lv_obj_set_pos(f, 6, 166);
+}
+// Keep the n strongest entries matching `want`, strongest first.
+template <typename F>
+int pickStrongest(det::Entry *out, int max, bool filtered, F want) {
+  det::Entry *e = gSnap;
+  if (!e) return 0;
+  const int n = det::snapshot(e, det::kMax, filtered);
+  int k = 0;
+  for (int i = 0; i < n; i++) {
+    if (!want(e[i])) continue;
+    int pos = k;
+    while (pos > 0 && det::smoothed(out[pos - 1]) < det::smoothed(e[i])) pos--;
+    if (pos >= max) continue;
+    for (int j = LV_MIN(k, max - 1); j > pos; j--) out[j] = out[j - 1];
+    out[pos] = e[i];
+    if (k < max) k++;
+  }
+  return k;
+}
+void rowText(const det::Entry &x, char *t, size_t cap) {
+  char cell[3], tags[24], id[9], ch[8] = "";
+  uic::cellName(x.cell, cell);
+  uic::badgeStr(x.badges, tags, sizeof tags, true);
+  privacy::idToStr(x.id, id);
+  id[6] = 0;
+  if (x.kind == det::WIFI) snprintf(ch, sizeof ch, "ch%u", x.channel);
+  snprintf(t, cap, "%s %-4s %4d dBm %s %-4s %s", cell, uic::kindName(x.kind), det::smoothed(x), id, ch, tags);
+}
+void refreshList() {
+  const bool drones = cur == ui::DRONES;
+  listN = pickStrongest(listEnt, kListRows, false, [drones](const det::Entry &x) {
+    return drones ? x.kind == det::DRONE
+                  : x.kind != det::DRONE && (x.badges & (sig::TRK | sig::META | sig::FLOCK));
+  });
+  for (int i = 0; i < kListRows; i++) {
+    char t[64] = "";
+    if (i < listN) rowText(listEnt[i], t, sizeof t);
+    lv_label_set_text(listRows[i], t);
+    lv_obj_set_style_text_color(listRows[i], C(i < listN && listEnt[i].kind == det::DRONE ? CYD32_COL_DRONE : CYD32_COL_WHITE), 0);
+  }
+  lv_label_set_text(listEmpty, listN ? "" : drones ? "No drone in range" : "No tracker, Meta or Flock device");
+}
+
+// COUNTERS = the v0.1 dashboard on one page: counters, Wi-Fi and BLE lists
+// (5 strongest each), a 3-line log of first sightings (drones and tagged
+// devices), 4 display filters and the ABOUT notice.
+const uint8_t kFiltBit[4] = {det::F_WIFI, det::F_BLE, det::F_RID, det::F_TAGGED_ONLY};
+const char *kFiltName[4] = {"WIFI", "BLE", "RID", "TAGGED"};
+void onFilter(lv_event_t *e) {
+  const int i = (int)(intptr_t)lv_event_get_user_data(e);
+  det::setFilters((uint8_t)(det::filters() ^ kFiltBit[i]));
+  ui::refresh();
+}
+det::Entry dashEnt[10];
+void onDashRow(lv_event_t *e) {
+  const int i = (int)(intptr_t)lv_event_get_user_data(e);
+  if (!lv_label_get_text(i < 5 ? dashW[i] : dashB[i - 5])[0]) return;
+  selectEntry(dashEnt[i]);
+  ui::show(ui::DETAILS);
+}
+void buildCounters() {
+  dashTop = label(content, "", &lv_font_unscii_8, CYD32_SONAR_G4);
+  lv_obj_set_pos(dashTop, 4, 3);
+  lv_obj_set_width(dashTop, 312);
+  lv_obj_t *wl = label(content, "WIFI", &lv_font_unscii_8, CYD32_SONAR_G3);
+  lv_obj_set_pos(wl, 4, 26);
+  lv_obj_t *bl = label(content, "BLE", &lv_font_unscii_8, CYD32_SONAR_G3);
+  lv_obj_set_pos(bl, 164, 26);
+  for (int i = 0; i < 5; i++) {
+    dashW[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_set_pos(dashW[i], 4, 37 + i * 11);
+    lv_obj_set_size(dashW[i], 152, 11);
+    dashB[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_set_pos(dashB[i], 164, 37 + i * 11);
+    lv_obj_set_size(dashB[i], 152, 11);
+    lv_obj_add_flag(dashW[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(dashB[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(dashW[i], onDashRow, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    lv_obj_add_event_cb(dashB[i], onDashRow, LV_EVENT_CLICKED, (void *)(intptr_t)(i + 5));
+  }
+  lv_obj_t *ll = label(content, "LOG", &lv_font_unscii_8, CYD32_SONAR_G3);
+  lv_obj_set_pos(ll, 4, 95);
+  for (int i = 0; i < 3; i++) {
+    dashLog[i] = label(content, "", &lv_font_unscii_8, CYD32_COL_WHITE);
+    lv_obj_set_pos(dashLog[i], 36, 95 + i * 11);
+  }
+  for (int i = 0; i < 4; i++) {
+    dashChip[i] = button(content, kFiltName[i], 4 + i * 64, 138, 60, 32, onFilter, (void *)(intptr_t)i, CYD32_SONAR_G4);
+    lv_obj_set_style_text_font(lv_obj_get_child(dashChip[i], 0), &lv_font_unscii_8, 0);
+  }
+  lv_obj_t *ab = button(content, "ABOUT", 262, 138, 54, 32, onShow, (void *)(intptr_t)ui::ABOUT, CYD32_SONAR_G3);
+  lv_obj_set_style_text_font(lv_obj_get_child(ab, 0), &lv_font_unscii_8, 0);
+}
+void refreshCounters() {
+  const det::Counts c = det::counts();
+  char t[96];
+  snprintf(t, sizeof t, "W %u  B %u  RID %u  TRK %u META %u FLK %u\n3 MIN %u   24 H %u   FILTERS: DISPLAY",
+           (unsigned)c.wifi, (unsigned)c.ble, (unsigned)c.drone, (unsigned)c.trk, (unsigned)c.meta, (unsigned)c.flock,
+           (unsigned)c.recent3m, (unsigned)c.unique24h);
+  lv_label_set_text(dashTop, t);
+  det::Entry w[5], b[5];
+  const int nw = pickStrongest(w, 5, true, [](const det::Entry &x) { return x.kind == det::WIFI; });
+  const int nb = pickStrongest(b, 5, true, [](const det::Entry &x) { return x.kind == det::BLE; });
+  for (int i = 0; i < 5; i++) {
+    char cell[3], tags[24], l[40] = "";
+    if (i < nw) {
+      dashEnt[i] = w[i];
+      uic::cellName(w[i].cell, cell);
+      uic::badgeStr(w[i].badges, tags, sizeof tags);
+      snprintf(l, sizeof l, "%s %4d ch%-2u %s", cell, det::smoothed(w[i]), w[i].channel, tags);
+    } else if (i == 0) {
+      snprintf(l, sizeof l, "%s", det::filters() & det::F_WIFI ? "-" : "(filtered)");
+    }
+    lv_label_set_text(dashW[i], l);
+    l[0] = 0;
+    if (i < nb) {
+      dashEnt[i + 5] = b[i];
+      uic::cellName(b[i].cell, cell);
+      uic::badgeStr(b[i].badges, tags, sizeof tags, true);
+      snprintf(l, sizeof l, "%s %4d %s", cell, det::smoothed(b[i]), tags);
+    } else if (i == 0) {
+      snprintf(l, sizeof l, "%s", det::filters() & det::F_BLE ? "-" : "(filtered)");
+    }
+    lv_label_set_text(dashB[i], l);
+  }
+  det::LogEvt lg[3];
+  const int nl = det::logSnapshot(lg, 3);
+  for (int i = 0; i < 3; i++) {
+    char l[48] = "", tm[8], cell[3], tags[24];
+    if (i < nl) {
+      uic::mmss(lg[i].ms, tm);
+      uic::cellName(lg[i].cell, cell);
+      uic::badgeStr(lg[i].badges, tags, sizeof tags);
+      snprintf(l, sizeof l, "%s %-5s %s %4d dBm", tm, lg[i].kind == det::DRONE ? "RID" : tags, cell, lg[i].rssi);
+    } else if (i == 0) {
+      snprintf(l, sizeof l, "no drone or tagged device yet");
+    }
+    lv_label_set_text(dashLog[i], l);
+    lv_obj_set_style_text_color(dashLog[i], C(i < nl && lg[i].kind == det::DRONE ? CYD32_COL_DRONE : CYD32_COL_WHITE), 0);
+  }
+  const uint8_t f = det::filters();
+  for (int i = 0; i < 4; i++) {
+    const bool on = f & kFiltBit[i];
+    lv_obj_set_style_bg_color(dashChip[i], C(on ? CYD32_SONAR_G4 : CYD32_SONAR_BG_CYD), 0);
+    lv_obj_set_style_border_color(dashChip[i], C(on ? CYD32_SONAR_G4 : CYD32_SONAR_G2), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(dashChip[i], 0), C(on ? CYD32_SONAR_BG_CYD : CYD32_SONAR_G3), 0);
   }
 }
 void buildStub(const char *title, const char *what) {
@@ -848,9 +1135,18 @@ void refreshHeader() {
 }  // namespace
 
 namespace ui {
-void begin() { buildChrome(); show(BOOT); }
+void begin() {
+  if (!gSnap) gSnap = (det::Entry *)malloc(sizeof(det::Entry) * det::kMax);
+  if (!sonarEnt) sonarEnt = (det::Entry *)malloc(sizeof(det::Entry) * kSonarMax);
+  if (!sonarRc) sonarRc = (radar::Contact *)malloc(sizeof(radar::Contact) * kSonarMax);
+  buildChrome();
+  show(BOOT);
+}
 void show(Screen s) {
+  if (cur != s && cur != BOOT && cur != DETAILS && cur != TORPEDO) prevSc = cur;
   if (fxTimer) { lv_timer_delete(fxTimer); fxTimer = nullptr; }
+  if (sonarTimer) { lv_timer_delete(sonarTimer); sonarTimer = nullptr; }
+  sonarN = 0;
   if (stage) { lv_obj_delete(stage); stage = nullptr; }
   radarObj = bootBar = bootPct = bootLogo = bootTitle = scanLine = nullptr;
   lv_obj_clean(content);
@@ -872,11 +1168,11 @@ void show(Screen s) {
     case CREATURE: buildCreature(); break;
     case MENU: buildMenu(); break;
     case DETAILS: buildDetails(); break;
-    case TRACKERS: buildStub("TRACKERS", "Passive detection of BLE item trackers (AirTag, SmartTag, Tile) seen following you over time."); break;
-    case DRONES: buildStub("DRONES", "Remote ID beacons (ASTM F3411, Wi-Fi and BLE) are already counted on the sonar. Phase 3 decodes position and operator fields."); break;
-#ifndef CYD32_HW_M5STACK_STOPWATCH
-    case WARDRIVING: buildStub("WARDRIVING", "On request only: export to the local microSD card, hashed MACs, never uploaded anywhere."); break;
-#endif
+    case TRACKERS: buildList(false); break;
+    case DRONES: buildList(true); break;
+    case COUNTERS: buildCounters(); break;
+    case EVOLUTION: buildCreature(); break;
+    case WARDRIVING: buildStub("WARDRIVE", "On request only: export to the local microSD card, hashed MACs, never uploaded anywhere."); break;
     case UPDATE_CONFIRM: buildUpdateConfirm(); break;
     case OTA: buildOta(); break;
     case ABOUT: buildAbout(); break;
@@ -893,6 +1189,9 @@ void refresh() {
     case GRID: refreshGrid(); break;
     case CREATURE: refreshCreature(); break;
     case DETAILS: refreshDetails(); break;
+    case TRACKERS:
+    case DRONES: refreshList(); break;
+    case COUNTERS: refreshCounters(); break;
     case OTA: refreshOta(); break;
     default: break;
   }

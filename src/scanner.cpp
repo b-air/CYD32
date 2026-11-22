@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
 #include "scanner.h"
+#include "bearing.h"
 #include "detections.h"
+#include "signatures.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <esp_wifi.h>
@@ -10,7 +12,15 @@
 #include "boot_log.h"
 
 namespace {
-constexpr uint32_t kWifiSliceMs = 12000, kBleSliceMs = 6000, kHopMs = 350;
+// Shorter slices than v0.2-test4 (12 s Wi-Fi / 6 s BLE, 350 ms per channel):
+// every BLE device is heard at least every 4.5 s instead of every 18 s, and
+// the busy channels 1 / 6 / 11 come round every ~0.6 s instead of every
+// 4.5 s, so sonar positions follow a walk much faster. The hop table visits
+// 1 / 6 / 11 four times per 24 hops (the classic "favour the non-overlapping
+// channels" approach of passive scanners) and every other channel once.
+constexpr uint32_t kWifiSliceMs = 3000, kBleSliceMs = 1500, kHopMs = 125;
+const uint8_t kHop[24] = {1, 6, 11, 2, 1, 6, 11, 3, 4, 1, 6, 11, 5, 7, 1, 6, 11, 8, 9, 10, 12, 13, 6, 11};
+uint8_t hopIdx = 0;
 enum Phase { OFF, WIFI_PH, BLE_PH } phase = OFF;
 uint32_t phaseStart = 0, lastHop = 0;
 uint8_t channel = 1;
@@ -85,42 +95,54 @@ void promiscCb(void *buf, wifi_promiscuous_pkt_type_t type) {
     if (len >= 36) cap = (uint16_t)(f[34] | (f[35] << 8));
     uint8_t traits = band;
     if (!rid && ieLen > 0) traits |= classifyWifiIes(f + 36, ieLen, cap, true);
-    det::report(rid ? det::DRONE : det::WIFI, f + 10, rssi, ch, traits);
+    // SSID (IE 0) is only matched against the badge patterns, never stored.
+    const uint8_t *ssid = nullptr;
+    int ssidLen = 0;
+    if (ieLen >= 2 && f[36] == 0 && f[37] <= 32 && 2 + f[37] <= ieLen) { ssid = f + 38; ssidLen = f[37]; }
+    uint8_t badges = sig::wifi(f + 10, ssid, ssidLen);
+    if (bearing::isRandomized(f + 10)) badges |= sig::RANDOM_ADDR;
+    det::report(rid ? det::DRONE : det::WIFI, f + 10, rssi, ch, traits, badges);
   } else if (subtype == 4) {                   // probe request (client device)
     const int ieLen = len > 28 ? len - 24 - 4 : 0;
     uint8_t traits = band;
     if (ieLen > 0) traits |= classifyWifiIes(f + 24, ieLen, 0, false);
-    det::report(det::WIFI, f + 10, rssi, ch, traits);
+    uint8_t badges = sig::wifi(f + 10, nullptr, 0);
+    if (bearing::isRandomized(f + 10)) badges |= sig::RANDOM_ADDR;  // probe MAC randomization
+    det::report(det::WIFI, f + 10, rssi, ch, traits, badges);
   }
   // Frame contents (SSID, payload) are not kept: only classification bits are stored.
 }
 
+// Badge bits from the advertisement (signatures.h). Nothing is stored.
 uint8_t classifyBle(NimBLEAdvertisedDevice *d) {
-  uint8_t bits = 0;
-  if (d->haveManufacturerData()) {
-    const std::string md = d->getManufacturerData();
-    const size_t n = md.size();
-    const auto *p = reinterpret_cast<const uint8_t *>(md.data());
-    if (n >= 3 && p[0] == 0x4C && p[1] == 0x00) {
-      const uint8_t typ = p[2];
-      if (typ == 0x12 || typ == 0x10) bits |= det::traitBit(det::TRK);
-    }
-  }
-  if (d->haveServiceData() && d->getServiceDataUUID().equals(NimBLEUUID((uint16_t)0xFD5A)))
-    bits |= det::traitBit(det::TRK);
-  if (d->isAdvertisingService(NimBLEUUID((uint16_t)0xFEED)) ||
-      d->isAdvertisingService(NimBLEUUID((uint16_t)0xFDAE)))
-    bits |= det::traitBit(det::TRK);
-  return bits;
+  uint16_t uu[8];
+  int nu = 0;
+  auto add = [&](const NimBLEUUID &u) {
+    if (nu < 8 && u.bitSize() == 16) uu[nu++] = u.getNative()->u16.value;
+  };
+  for (uint8_t i = 0; i < d->getServiceUUIDCount() && nu < 8; i++) add(d->getServiceUUID(i));
+  for (uint8_t i = 0; i < d->getServiceDataCount() && nu < 8; i++) add(d->getServiceDataUUID(i));
+  std::string md, name;
+  if (d->haveManufacturerData()) md = d->getManufacturerData();
+  if (d->haveName()) name = d->getName();
+  return sig::ble(reinterpret_cast<const uint8_t *>(md.data()), md.size(), uu, nu, name.empty() ? nullptr : name.c_str());
 }
 
 class BleCb : public NimBLEAdvertisedDeviceCallbacks {
   void onResult(NimBLEAdvertisedDevice *d) override {
+    // NimBLE keeps the address little-endian: reverse it to display order so
+    // the indicative bearing matches the printed address (bearing.h).
+    const uint8_t *n = d->getAddress().getNative();
     uint8_t mac[6];
-    memcpy(mac, d->getAddress().getNative(), 6);
+    for (int i = 0; i < 6; i++) mac[i] = n[5 - i];
     // ASTM F3411 Remote ID over BLE: service data UUID 0xFFFA.
     const bool rid = d->haveServiceData() && d->getServiceDataUUID().equals(NimBLEUUID((uint16_t)0xFFFA));
-    det::report(rid ? det::DRONE : det::BLE, mac, d->getRSSI(), 0, rid ? 0 : classifyBle(d));
+    uint8_t badges = rid ? 0 : classifyBle(d);
+    // Random address that is not "static random" (top bits 11): a resolvable
+    // or non-resolvable private address, which rotates.
+    if (d->getAddressType() == BLE_ADDR_RANDOM && (mac[0] >> 6) != 3) badges |= sig::RANDOM_ADDR;
+    const uint8_t traits = (badges & sig::TRK) ? det::traitBit(det::TRK) : 0;
+    det::report(rid ? det::DRONE : det::BLE, mac, d->getRSSI(), 0, traits, badges);
   }
 };
 BleCb bleCb;
@@ -179,7 +201,7 @@ void startBle() {
   NimBLEScan *s = NimBLEDevice::getScan();
   s->setAdvertisedDeviceCallbacks(&bleCb, true);
   s->setActiveScan(false);  // passive: no SCAN_REQ is ever sent
-  s->setInterval(100); s->setWindow(90);
+  s->setInterval(100); s->setWindow(100);  // 100 % duty cycle during the short BLE slice
   bleStartOk = s->start(0, nullptr, false) || bleStartOk;
   phase = BLE_PH; phaseStart = millis();
 }
@@ -203,7 +225,8 @@ void loop() {
   const uint32_t now = millis();
   if (phase == WIFI_PH) {
     if (now - lastHop >= kHopMs) {
-      channel = channel % 13 + 1;
+      hopIdx = (uint8_t)((hopIdx + 1) % sizeof kHop);
+      channel = kHop[hopIdx];
       esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
       lastHop = now;
     }

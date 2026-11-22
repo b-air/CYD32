@@ -18,6 +18,7 @@ struct Rec {
   int8_t rssi;
   uint8_t channel;
   uint8_t kind;      // det::Kind
+  uint16_t bearing;  // indicative bearing (det::Entry::bearing), NOT a direction
 };
 void begin();                // no-op besides documenting BSS zero-init
 void start();                // open / resume a session (first visit to the screen)
