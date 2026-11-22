@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cyd32_sonar_theme.h"
+#include "rssi_track.h"
 
 namespace radar {
 namespace {
@@ -107,7 +108,12 @@ lv_area_t contactArea(const State &S, int i) {
   const int box = S.s.boxSize / 2 + S.s.boxW + 1;
   const int lw = c.id[0] ? textW(S.s.idFont, c.id) : 0, lh = c.id[0] ? fontH(S.s.idFont) : 0;
   const int x = S.s.cx + c.dx, y = S.s.cy + c.dy;
-  lv_area_t a = {x - LV_MAX(halo, box), y - LV_MAX(halo, box) - lh - 2, x + LV_MAX(halo, box) + lw + 2, y + LV_MAX(halo, box)};
+  const int m = LV_MAX(halo + 3, box);  // +3: CLOSE highlight ring
+  lv_area_t a = {x - m, y - m - lh - 2, x + m + lw + 2, y + m};
+  for (int t = 0; t < c.tn && t < kTrailPts; t++) {
+    const int tx = S.s.cx + c.tdx[t], ty = S.s.cy + c.tdy[t];
+    a.x1 = LV_MIN(a.x1, tx - 3); a.y1 = LV_MIN(a.y1, ty - 3); a.x2 = LV_MAX(a.x2, tx + 3); a.y2 = LV_MAX(a.y2, ty + 3);
+  }
   return a;
 }
 void invalidateRel(lv_obj_t *o, lv_area_t a) {
@@ -180,6 +186,17 @@ void drawCb(lv_event_t *e) {
     line(L, clip, X, Y - s.crossR, X, Y + s.crossR, 1, C(CYD32_SONAR_G1));
   }
   for (int r : s.rings) if (r) ring(L, clip, X, Y, r, 1, C(s.ringCol));
+  // Dotted CLOSE (G3) and VERY CLOSE (G4) rings: finer marking near the centre.
+  const int16_t dotted[2] = {s.closeR, s.veryCloseR};
+  for (int k = 0; k < 2; k++) {
+    const int r = dotted[k];
+    if (r < 4 || !meets(clip, X - r - 1, Y - r - 1, X + r + 1, Y + r + 1)) continue;
+    const int step = r > 40 ? 6 : 12;
+    for (int b = 0; b < 360; b += step) {
+      pt(S, (float)r, (float)b, x1, y1);
+      circle(L, clip, ox + x1, oy + y1, 1, C(k ? CYD32_SONAR_G4 : CYD32_SONAR_G3));
+    }
+  }
   ring(L, clip, X, Y, s.rim + s.rimW / 2, s.rimW, C(CYD32_SONAR_G3));
   // 3. Ticks, outward from the rim.
   if (s.tick30) {
@@ -217,8 +234,13 @@ void drawCb(lv_event_t *e) {
     const Contact &c = S.c[i];
     const int r = c.r ? c.r : s.echoR;
     const int32_t x = X + c.dx, y = Y + c.dy;
-    if (!meets(clip, x - 2 * r - 1, y - 2 * r - 1, x + 2 * r + 1, y + 2 * r + 1)) continue;
-    const uint8_t l = S.lvl[i];
+    // Trail: previous positions as small dim dots (newest brightest).
+    for (int t = 0; t < c.tn && t < kTrailPts; t++) {
+      const uint16_t tc = c.kind == DRONE ? s.droneRamp[0] : (t == 0 ? CYD32_SONAR_G3 : CYD32_SONAR_G2);
+      circle(L, clip, X + c.tdx[t], Y + c.tdy[t], r > 3 ? 2 : 1, C(tc));
+    }
+    if (!meets(clip, x - 2 * r - 4, y - 2 * r - 4, x + 2 * r + 4, y + 2 * r + 4)) continue;
+    const uint8_t l = (c.flags & STALE) ? 1 : S.lvl[i];
     lv_color_t core, halo;
     if (c.kind == DRONE) {
       core = C(s.droneRamp[l - 1]);
@@ -233,6 +255,7 @@ void drawCb(lv_event_t *e) {
     circle(L, clip, x + jx * r / 3, y + jy * r / 3, sub, core);
     circle(L, clip, x - jx * r / 4, y - jy * r / 4, sub, core);
     circle(L, clip, x, y, r, core);
+    if (c.flags & CLOSE) ring(L, clip, x, y, r * 2 + 3, 1, C(c.kind == DRONE ? CYD32_SONAR_DRONE : CYD32_SONAR_G5));
   }
   // 6. Target box: four corner brackets.
   if (S.sel >= 0 && S.sel < S.n && s.boxSize) {
@@ -293,6 +316,11 @@ int bearingOf(int dx, int dy) {
   const float a = atan2f((float)dx, (float)-dy) * 180.f / kPi;
   return wrap((int)lroundf(a));
 }
+int rssiRadius(const Style &s, int dbm) {
+  const int er = s.echoR ? s.echoR : 2;
+  return rssi::radius(dbm, s.rim, er * 2 + 2, s.rim - er * 2 - 2);
+}
+void placeRssi(const Style &s, int dbm, int brgDeg, int16_t &dx, int16_t &dy) { polar(rssiRadius(s, dbm), brgDeg, dx, dy); }
 void cellOffset(const Style &s, int col, int row, int16_t &dx, int16_t &dy) {
   // Same mapping as the GRID screen: x = (col - 4.5) * pitch, y = (row - 3.5) * pitch.
   float x = (2 * col - 9) * s.colPitchX10 / 20.f, y = (2 * row - 7) * s.rowPitch / 2.f;

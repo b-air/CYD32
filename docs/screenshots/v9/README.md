@@ -19,3 +19,11 @@ version strings in these images are **EXAMPLE DATA**.
 - The StopWatch `firmware-host/` images were re-rendered after
   `v0.2.0-test3` (full-panel layout, larger text, A / B key tags at 310 /
   050 deg, tab band on every screen, outlined menu).
+- `firmware-host-b5/`: batch 5 (A / B navigation, 8-entry menu, RSSI sonar
+  with indicative angle, CLOSE / VERY CLOSE rings and trails, TRACKERS,
+  DRONES, DEVICE DETAIL, dashboard pages, creature egg / size 2 / size 4)
+  for both targets, rendered the same way from the real UI, detections and
+  creature code with synthetic addresses (`sw-02`: after A short on SONAR;
+  `sw-16`: after A long then B long). The superseded sonar, grid, creature,
+  menu, counters, details and wardriving images were removed from
+  `firmware-host/`; boot, about, update, OTA and unsigned are unchanged.

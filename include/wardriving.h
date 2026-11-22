@@ -4,6 +4,7 @@
 // produced by privacy::macId (the same scheme as the live table). Nothing is
 // written to NVS, flash, serial or any network path. The table lives in BSS
 // and is cleared at reboot. Compiled in only on the StopWatch target.
+// RULE: bearing / grid cell (unsalted FNV-1a, bearing.h) are display-only and must never be written to any SD export, serial output, log or file (scripts/guard.sh checks output calls).
 #pragma once
 #include <stdint.h>
 #include "detections.h"
@@ -18,6 +19,7 @@ struct Rec {
   int8_t rssi;
   uint8_t channel;
   uint8_t kind;      // det::Kind
+  uint16_t bearing;  // indicative bearing (det::Entry::bearing), NOT a direction; display only, never exported
 };
 void begin();                // no-op besides documenting BSS zero-init
 void start();                // open / resume a session (first visit to the screen)

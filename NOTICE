@@ -24,6 +24,14 @@ Bruce firmware - https://github.com/pr3y/Bruce
   jammers, evil portal, BadUSB, IR TV-B-Gone, ...) are never included; CI
   enforces this.
 
+Projects consulted for ideas (no code copied)
+---------------------------------------------
+ESP32 Marauder   https://github.com/justcallmekoko/ESP32Marauder   MIT
+SquachWatch-CYD  https://github.com/skizzophrenic/SquachWatch-CYD  GPL-3.0
+Flock-You        https://github.com/colonelpanichacks/flock-you    MIT
+Only public identifiers (Bluetooth SIG numbers, IEEE OUIs, SSID patterns) and
+general techniques were reused; see docs/SONAR.md and docs/SIGNATURES.md.
+
 Third-party components (linked at build time, not vendored)
 -----------------------------------------------------------
 LVGL 9.2.2              MIT              LICENSES/MIT-LVGL.txt

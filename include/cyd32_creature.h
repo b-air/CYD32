@@ -18,9 +18,10 @@ typedef enum { CYD32_CREA_FENNI=0, CYD32_CREA_LUMO, CYD32_CREA_KRABBI, CYD32_CRE
 /* cth_keys: 10 frames = stage 0.5,1,1.5,...,5 (odd index = stage key); traits order: BT tracker, Wi-Fi AP, hotspot, open public, 2.4 GHz, 5 GHz, Wi-Fi 6, Wi-Fi 7 */
 /* THRESHOLDS - option A (chosen), shared by all creatures */
 #define CYD32_DEDUP_WINDOW_S (24u*3600u)
-static const uint16_t CYD32_SIZE_THRESH[4]={10,40,120,300};      /* sizes 2..5, cumulative unique detections */
+/* Size thresholds moved to creature_rules.h (v0.2 batch 5): hatch at 1, sizes 2..4 at 30 / 60 / 120
+   distinct devices seen in the last 3 minutes (sliding window, the creature shrinks again). */
 static const uint8_t  CYD32_CTHULHU_DRONES[5]={1,3,6,10,15};      /* stages 1..5, cumulative drones */
-static const uint16_t CYD32_SIZE_ZOOM[5]={256,169,197,225,256};  /* size 1 = baby anims native; 2..5 = adult anims zoomed */
+static const uint16_t CYD32_SIZE_ZOOM[5]={256,180,218,256,256};  /* index size-1: size 1 = baby anims native; 2..4 = adult anims zoomed (4 = max) */
 /* first sighting of each source type unlocks its trait overlay + one sigil rune */
 extern const cyd32_creature_t cyd32_fenni, cyd32_lumo, cyd32_krabbi, cyd32_poulpi;
 #ifdef __cplusplus

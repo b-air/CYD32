@@ -50,6 +50,12 @@ EXAMPLE DATA; not tested on hardware yet).
   RAM table of salted IDs (cleared at reboot, oldest dropped when full), never
   to flash, NVS or a network.
 - Remote ID (ASTM F3411) beacons over Wi-Fi and BLE are counted as drones.
+- The sonar radius is the smoothed RSSI. The angle is **indicative**: an
+  unsalted FNV-1a hash of the address, identical on every CYD32, not a
+  direction (see [docs/SONAR.md](docs/SONAR.md)).
+- TRK / META / FLOCK badges come from a small documented signature set
+  ([docs/SIGNATURES.md](docs/SIGNATURES.md)). Navigation, menu and dashboard:
+  [docs/NAVIGATION.md](docs/NAVIGATION.md).
 
 ## Status (phase 2 MVP)
 
@@ -58,10 +64,11 @@ EXAMPLE DATA; not tested on hardware yet).
 | Boot, display, touch, tab bar | done |
 | Sonar, grid (+ easter egg A1-B2-C3-D4), details | done |
 | Passive Wi-Fi mgmt + BLE scan, hashed IDs | done |
-| Creature (4 lineages; sizes at 10/40/120/300 unique detections; Cthulhu at 1/3/6/10/15 drones) | done |
+| Creature (4 lineages; hatches at 1 device, sizes 2/3/4 at 30/60/120 devices in the last 3 min, shrinks again; Cthulhu at 1/3/6/10/15 drones) | done |
 | About screen (licence, version, commit, source) | done |
 | Signed OTA from an iPhone, A/B slots, rollback | done |
-| Trackers, drones (Remote ID decoding) | phase 3 (stub screens) |
+| Trackers / Meta / Flock badges, drone list, v0.1 dashboard (counters, lists, log, filters) | done (hardware untested) |
+| Remote ID field decoding (position, operator) | phase 3 |
 | Wardriving on StopWatch (RAM-only, salted IDs, cap 1024) | done (no GPS / no export; hardware untested) |
 | M5Stack StopWatch target (round HUD, dual firmware) | done (v8 round HUD; hardware untested) |
 
@@ -161,6 +168,9 @@ The About screen shows the status and the fingerprint of the verifying key
   clip, CST820B touch including the r=213 safe circle, KEYA BACK / KEYB SELECT,
   A+B long-press menu, KEYA unsigned-mode gesture, battery reading, creature
   x3 blit, RAM-only wardriving, OTA, scanner).
+- Batch 5 (hardware untested): A / B short and long presses, 8-entry menu,
+  sonar refresh rate and trail, shorter scanner slices, badge signatures, heap
+  use on the CYD (about 8 KB of tables moved from static RAM to the heap).
 - Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
   `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
   arduino-esp32 3.x / ESP-IDF 5.

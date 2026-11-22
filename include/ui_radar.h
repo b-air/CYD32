@@ -39,14 +39,20 @@ struct Style {
   uint8_t boxW, lineW, underW;  // target box, sweep line and its G3 underlay
   bool sweep;                   // animated sweep (false: static scope, echoes at L3)
   bool keyTicks;                // 2 px G4 marks at 090 / 270 (StopWatch key tags)
+  int16_t closeR, veryCloseR;   // dotted CLOSE / VERY CLOSE rings (0 = none), see rssi_track.h
 };
 
+enum ContactFlag : uint8_t { CLOSE = 0x01, STALE = 0x02 };
+constexpr int kTrailPts = 3;
 struct Contact {
   int16_t dx, dy;   // from the centre
   uint8_t kind;     // Kind
   uint8_t r;        // core radius, 0 = style echoR
   char id[8];       // label ("" = none)
   uint32_t seed;    // stable hash (sub-circle offsets)
+  uint8_t flags;    // ContactFlag: CLOSE = highlight ring, STALE = drawn at the dimmest level
+  uint8_t tn;       // trail points used
+  int16_t tdx[kTrailPts], tdy[kTrailPts];  // previous positions, newest first (dim dots)
 };
 
 constexpr int kMaxContacts = 32;
@@ -60,4 +66,8 @@ void setProgress(lv_obj_t *o, int pct);  // rim progress arc, clockwise from 000
 void cellOffset(const Style &s, int col, int row, int16_t &dx, int16_t &dy);
 void polar(int r, int brgDeg, int16_t &dx, int16_t &dy);  // bearing 0 = up, clockwise
 int bearingOf(int dx, int dy);                            // 0..359
+// Sonar position from RSSI and the indicative bearing: radius linear in dBm
+// (rssi::radius, ring 1 = -50 dBm), kept off the hub and inside the rim.
+void placeRssi(const Style &s, int dbm, int brgDeg, int16_t &dx, int16_t &dy);
+int rssiRadius(const Style &s, int dbm);
 }  // namespace radar

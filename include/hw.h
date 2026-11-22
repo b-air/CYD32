@@ -12,8 +12,11 @@ void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *rgb565);
 bool bootButtonPressed();           // unsigned-mode hold button, active low
 [[noreturn]] void fatal(const char *msg);  // message on screen + serial, then halt (no reset loop)
 #ifdef CYD32_HW_M5STACK_STOPWATCH
-bool btnAClicked();                 // KEYA short press (BACK)
+bool btnAClicked();                 // KEYA short press (NEXT)
 bool btnBClicked();                 // KEYB short press (SELECT)
+bool btnAHeld();                    // KEYA long press, >= 500 ms (BACK)
+bool btnBHeld();                    // KEYB long press, >= 500 ms (SONAR home)
+void clearButtons();                // drop latched presses (boot splash)
 bool btnAPressed();
 bool btnBPressed();
 int batteryPct();                   // 0..100, hardware-dependent

@@ -34,6 +34,7 @@ void upsert(const det::Entry &e) {
   table[slot].rssi = e.rssi;
   table[slot].channel = e.channel;
   table[slot].kind = (uint8_t)e.kind;
+  table[slot].bearing = e.bearing;
 }
 }  // namespace
 
@@ -51,7 +52,7 @@ void start() {
 }
 void loop() {
   if (!running) return;
-  det::Entry snap[det::kMax];
+  static det::Entry snap[det::kMax];  // static: ~2.7 KB, kept off the loop task stack
   const int n = det::snapshot(snap, det::kMax);
   for (int i = 0; i < n; i++) upsert(snap[i]);
 }

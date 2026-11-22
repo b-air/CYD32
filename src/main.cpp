@@ -214,7 +214,8 @@ void loop() {
   } else {
     scanner::loop();
 #ifdef CYD32_HW_M5STACK_STOPWATCH
-    wardriving::loop();
+    static uint32_t lastWd = 0;  // the RAM log does not need more than 2 Hz
+    if (now - lastWd >= 500) { lastWd = now; wardriving::loop(); }
 #endif
     if (ui::takeUpdateRequest()) {
       scanner::stop();
@@ -227,7 +228,7 @@ void loop() {
   if (now - lastRefresh >= 250) {
     lastRefresh = now;
     const det::Counts c = det::counts();
-    creature::update(c.unique24h, (uint16_t)c.droneEver, c.seenTraits);
+    creature::update(c.recent3m, c.unique24h, (uint16_t)c.droneEver, c.seenTraits);
     ui::refresh();
   }
   selfTest();
