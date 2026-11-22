@@ -8,3 +8,4 @@ out="${TMPDIR:-/tmp}/cyd32-hosttest"
 ${CXX:-c++} -std=c++17 -O1 -Wall -Wextra -I"$root/include" \
   "$here/test_core.cpp" "$root/src/bearing.cpp" "$root/src/signatures.cpp" -o "$out"
 "$out"
+"$here/guard_selftest.sh"

@@ -29,5 +29,9 @@ wd=$(find src include lib -iname '*wardriv*' 2>/dev/null)
 if [[ -n "$wd" ]]; then
   check "outbound network in wardriving" 'HTTPClient|WiFiClient|esp_http_client|AsyncClient|lwip/sockets|connect\(' $wd
 fi
+# Unsalted bearing / grid cell (bearing.h) are display-only: never in serial
+# output, logs or file / SD writes (line-based check; snprintf to UI labels is allowed).
+check "bearing/cell in serial, log or file output" \
+  '(Serial[0-9]*\.(print|println|printf|write)|(^|[^a-z_])(printf|fprintf|fputs|fwrite)[[:space:]]*\(|log_[deivw][[:space:]]*\(|ESP_(EARLY_|DRAM_)?LOG[A-Z]*[[:space:]]*\(|\.(write|print|println|printf)[[:space:]]*\()[^;]*\b(bearing|cell|cellFromMac|fromMac)' "${dirs[@]}"
 [[ $fail == 0 ]] && echo "guard: OK (passive-only)"
 exit $fail

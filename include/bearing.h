@@ -13,7 +13,7 @@
 //   bearing = (hash * 360) >> 32          (0..359, uniform)
 //   cell    = (hash >> 8) % 80             (GRID A-J x 1-8)
 // Unlike privacy::macId() this hash is NOT salted (it must match across
-// devices). It keeps ~8.5 bits (bearing) + ~6.3 bits (cell): enough to tell
+// devices). It keeps at most ~15 bits combined (bearing + cell): enough to tell
 // devices apart on screen, far too little to recover an address. The address
 // itself is never stored.
 // Randomized addresses (BLE resolvable private addresses, Wi-Fi probe MAC

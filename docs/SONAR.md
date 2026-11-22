@@ -41,8 +41,9 @@ Now (`src/bearing.cpp`), shared by both targets:
 - Deterministic and unsalted: the same address gets the same angle and cell on
   every CYD32 and after reboots, so two devices side by side agree. The UI says
   "ANGLE INDICATIVE" / "angle is indicative".
-- Privacy: only about 8.5 bits (angle) + 6.3 bits (cell) of the address are
-  exposed; the address is never stored. Device IDs shown in lists stay salted
+- Privacy: at most ~15 bits combined (angle + cell) of the address are
+  exposed; the address is never stored.
+- Rule: the angle and grid cell (unsalted FNV-1a values) are display-only and must never be written to any SD export, serial output, log or file; `scripts/guard.sh` fails if they appear in a Serial / log / printf / file-write call. Device IDs shown in lists stay salted
   per boot (`privacy::macId`).
 - Randomized addresses (BLE resolvable private addresses, Wi-Fi MAC
   randomization) change every few minutes: the device then moves to a new
