@@ -8,6 +8,11 @@
 #define LV_USE_STDLIB_MALLOC LV_STDLIB_BUILTIN
 #if defined(CYD32_HW_M5STACK_STOPWATCH)
 #define LV_MEM_SIZE (128U * 1024U)
+/* StopWatch: the 128 KB pool is allocated in PSRAM at lv_init() instead of
+   internal .bss (src/big_alloc.cpp). The 37 KB draw buffer stays in internal
+   DMA RAM (main.cpp). */
+#define LV_MEM_POOL_INCLUDE "big_alloc.h"
+#define LV_MEM_POOL_ALLOC(size) cyd32_lv_pool_alloc(size)
 #else
 #define LV_MEM_SIZE (48U * 1024U)
 #endif

@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
 #include "detections.h"
 #include "bearing.h"
+#include "big_alloc.h"
 #include "creature_rules.h"
 #include "cyd32_creature.h"
 #include "privacy.h"
@@ -16,7 +17,8 @@
 #include <freertos/semphr.h>
 namespace {
 // Heap, allocated once in begin() (fixed size, never freed): keeps the CYD
-// static DRAM segment under its limit.
+// static DRAM segment under its limit. On the StopWatch these tables live in
+// PSRAM (cyd32_big_alloc) so internal RAM stays free for the Wi-Fi driver.
 det::Entry *table = nullptr;
 int used = 0;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -38,7 +40,7 @@ uint8_t seenTraits = 0;
 RecentWindow<192> *recent = nullptr;
 det::LogEvt logBuf[det::kLogMax];
 int logHead = 0, logN = 0;
-uint8_t filterMask = det::kFilterDefault;
+det::Cat sonarMode = det::CAT_ALL;
 
 void compactLocked(uint32_t now) {
   if (!uniq) { nUniq = 0; return; }
@@ -84,7 +86,7 @@ uint16_t droneCountLocked() {
 }
 void logLocked(const det::Entry &e, uint32_t now) {
   det::LogEvt &l = logBuf[logHead];
-  l.ms = now; l.id = e.id; l.rssi = e.rssi; l.kind = e.kind; l.badges = e.badges; l.cell = e.cell;
+  l.ms = now; l.id = e.id; l.rssi = e.rssi; l.kind = e.kind; l.badges = e.badges;
   logHead = (logHead + 1) % det::kLogMax;
   if (logN < det::kLogMax) logN++;
 }
@@ -93,17 +95,19 @@ namespace det {
 int8_t smoothed(const Entry &e) { return rssi::fromQ4(e.rssiQ4); }
 void begin() {
   used = 0; nUniq = 0; seenTraits = 0; logHead = logN = 0;
-  filterMask = kFilterDefault;
-  if (!uniq) uniq = (UEntry *)malloc(sizeof(UEntry) * kUniqueMax);
-  if (!table) table = (Entry *)calloc(kMax, sizeof(Entry));
-  if (!recent) recent = new (std::nothrow) RecentWindow<192>();
+  sonarMode = CAT_ALL;
+  if (!uniq) uniq = (UEntry *)cyd32_big_alloc(sizeof(UEntry) * kUniqueMax);
+  if (!table) table = (Entry *)cyd32_big_alloc(sizeof(Entry) * kMax);
+  if (!recent) {
+    void *m = cyd32_big_alloc(sizeof(RecentWindow<192>));
+    if (m) recent = new (m) RecentWindow<192>();
+  }
   if (recent) recent->clear();
 }
 void report(Kind k, const uint8_t mac[6], int8_t dbm, uint8_t ch, uint8_t traits, uint8_t badges) {
   // Hashing outside the critical section. The address itself is not kept.
   const uint32_t id = privacy::macId(mac);
   const uint16_t brg = bearing::fromMac(mac);
-  const uint8_t cell = bearing::cellFromMac(mac);
   const uint32_t now = millis();
   if (!table || !recent) return;  // begin() not called or out of memory at boot
   portENTER_CRITICAL(&mux);
@@ -119,7 +123,7 @@ void report(Kind k, const uint8_t mac[6], int8_t dbm, uint8_t ch, uint8_t traits
     memset(&e, 0, sizeof e);
     e.id = id; e.kind = k;
   }
-  e.bearing = brg; e.cell = cell;
+  e.bearing = brg;
   e.badges |= badges;
   e.rssiQ4 = rssi::emaStep(e.rssiQ4, fresh, dbm);
   if (fresh) { e.trailN = 0; e.trailMs = now; }
@@ -168,26 +172,49 @@ int recentCount() {
   portEXIT_CRITICAL(&mux);
   return n;
 }
-bool passes(const Entry &e, uint8_t f) {
-  const uint8_t kindBit = e.kind == WIFI ? F_WIFI : e.kind == BLE ? F_BLE : F_RID;
-  if (!(f & kindBit)) return false;
-  if ((f & F_TAGGED_ONLY) && e.kind != DRONE && !(e.badges & (sig::TRK | sig::META | sig::FLOCK))) return false;
-  return true;
-}
-uint8_t filters() { return filterMask; }
-void setFilters(uint8_t f) { filterMask = f; }
-int snapshot(Entry *out, int max, bool filtered) {
+int forgetOldest(int n) {
   const uint32_t now = millis();
-  const uint8_t f = filterMask;
+  portENTER_CRITICAL(&mux);
+  const int k = recent ? recent->evictOldest(n, now, creature_rules::kWindowMs) : 0;
+  portEXIT_CRITICAL(&mux);
+  return k;
+}
+const char *catName(Cat c) {
+  static const char *const kName[CAT_COUNT] = {"ALL", "WIFI", "BLE", "RID", "FLOCK", "TRK", "META"};
+  return c < CAT_COUNT ? kName[c] : "?";
+}
+Cat sonarCat() { return sonarMode; }
+void setSonarCat(Cat c) { sonarMode = c < CAT_COUNT ? c : CAT_ALL; }
+int snapshot(Entry *out, int max, Cat c) {
+  const uint32_t now = millis();
   int n = 0;
+  if (!table) return 0;
   portENTER_CRITICAL(&mux);
   for (int i = 0; i < used && n < max; i++)
-    if (now - table[i].lastSeen <= kVisibleMs && (!filtered || passes(table[i], f))) out[n++] = table[i];
+    if (now - table[i].lastSeen <= kVisibleMs && inCat(table[i], c)) out[n++] = table[i];
   portEXIT_CRITICAL(&mux);
   // newest first (insertion sort, n <= kMax)
   for (int i = 1; i < n; i++) { Entry e = out[i]; int j = i - 1;
     while (j >= 0 && out[j].lastSeen < e.lastSeen) { out[j + 1] = out[j]; j--; } out[j + 1] = e; }
   return n;
+}
+bool beepTarget(Cat c, bool hasPinned, uint32_t pinnedId, int8_t &dbm) {
+  const uint32_t now = millis();
+  bool found = false;
+  int best = -128;
+  if (!table) return false;
+  portENTER_CRITICAL(&mux);
+  for (int i = 0; i < used; i++) {
+    const Entry &e = table[i];
+    if (now - e.lastSeen > kVisibleMs || !inCat(e, c)) continue;
+    const int sm = smoothed(e);
+    if (hasPinned && e.id == pinnedId) { best = sm; found = true; break; }
+    if (e.kind == DRONE) continue;  // Wi-Fi / BLE only, unless pinned
+    if (!found || sm > best) { best = sm; found = true; }
+  }
+  portEXIT_CRITICAL(&mux);
+  dbm = (int8_t)best;
+  return found;
 }
 int logSnapshot(LogEvt *out, int max) {
   int n = 0;

@@ -18,6 +18,12 @@ scanner already receives. Nothing is stored but the badge bits. A badge means
 | FLOCK | BLE | company 0x09C8, name starting "Flock" or "Penguin" | battery packs; lower confidence |
 | RND | both | BLE random address type (not static), Wi-Fi locally administered bit | address will rotate |
 
+Where the badges are used (batch 6): the sonar modes FLOCK, TRK and META show
+only the devices with that badge; the dashboard TAGGED view lists the
+non-drone devices with any of the three (RND alone does not count); the
+proximity beep follows the strongest device of the current sonar mode. A
+drone (Remote ID) is never TAGGED: it has its own RID mode and view.
+
 Changes from v0.2:
 
 - Apple payload type 0x10 (Nearby Info) is no longer a tracker: every iPhone

@@ -267,15 +267,7 @@ void drawCb(lv_event_t *e) {
         line(L, clip, cx, cy, cx - sx * k, cy, s.boxW, C(CYD32_SONAR_G5));
       }
   }
-  // 7. A-J letters along the horizontal axis.
-  if (s.lettersFont) {
-    for (int c = 0; c < 10; c++) {
-      const char t[2] = {(char)('A' + c), 0};
-      const int32_t cx = X + ((2 * c - 9) * s.colPitchX10) / 20;
-      text(L, clip, t, s.lettersFont, cx - textW(s.lettersFont, t) / 2, Y + s.lettersDy, C(CYD32_SONAR_G2));
-    }
-  }
-  // 8. Contact labels (they do not decay).
+  // 7. Contact labels (they do not decay).
   for (int i = 0; i < S.n; i++) {
     const Contact &c = S.c[i];
     if (!c.id[0] || !s.idFont) continue;
@@ -321,14 +313,6 @@ int rssiRadius(const Style &s, int dbm) {
   return rssi::radius(dbm, s.rim, er * 2 + 2, s.rim - er * 2 - 2);
 }
 void placeRssi(const Style &s, int dbm, int brgDeg, int16_t &dx, int16_t &dy) { polar(rssiRadius(s, dbm), brgDeg, dx, dy); }
-void cellOffset(const Style &s, int col, int row, int16_t &dx, int16_t &dy) {
-  // Same mapping as the GRID screen: x = (col - 4.5) * pitch, y = (row - 3.5) * pitch.
-  float x = (2 * col - 9) * s.colPitchX10 / 20.f, y = (2 * row - 7) * s.rowPitch / 2.f;
-  const float lim = (float)(s.rim - s.echoR * 2 - 2), d = sqrtf(x * x + y * y);
-  if (d > lim) { x *= lim / d; y *= lim / d; }
-  dx = (int16_t)lroundf(x);
-  dy = (int16_t)lroundf(y);
-}
 
 lv_obj_t *create(lv_obj_t *parent, int x, int y, int w, int h, const Style &s) {
   lv_obj_t *o = lv_obj_create(parent);

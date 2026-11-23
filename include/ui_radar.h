@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
 // Procedural green-phosphor PPI radar (v9 sonar theme), shared by the CYD and
 // StopWatch UIs. One LVGL object draws everything in LV_EVENT_DRAW_MAIN: range
-// rings, rim, 5/10/30 deg ticks, bearing labels, crosshair, A-J letters, the
+// rings, rim, 5/10/30 deg ticks, bearing labels, crosshair, the
 // 40 deg / 8-step sweep wedge with its leading line, echoes with level decay,
 // the corner-bracket target box and an optional rim progress arc. No child
 // objects, no opacity and no transform on the object, so LVGL never needs an
@@ -31,9 +31,6 @@ struct Style {
   const lv_font_t *bearFont;
   uint16_t bearMaj, bearMin;    // colours of 000/090/180/270 and of the others
   uint16_t bearSkip;            // bit i set: no label at i * 30 deg
-  int16_t colPitchX10, rowPitch;  // grid cell pitch (A-J letters drawn when lettersFont != nullptr)
-  const lv_font_t *lettersFont;
-  int16_t lettersDy;            // top of the A-J letters below the centre
   const lv_font_t *idFont;      // contact labels
   int16_t echoR, boxSize;
   uint8_t boxW, lineW, underW;  // target box, sweep line and its G3 underlay
@@ -61,9 +58,6 @@ lv_obj_t *create(lv_obj_t *parent, int x, int y, int w, int h, const Style &s);
 // sel: index of the contact that gets the target box, -1 = none.
 void setContacts(lv_obj_t *o, const Contact *c, int n, int sel);
 void setProgress(lv_obj_t *o, int pct);  // rim progress arc, clockwise from 000; < 0 hides it
-// Grid cell (col 0..9 = A..J, row 0..7 = 1..8) to an offset from the centre,
-// pulled inside the rim. Same cells as the GRID screen.
-void cellOffset(const Style &s, int col, int row, int16_t &dx, int16_t &dy);
 void polar(int r, int brgDeg, int16_t &dx, int16_t &dy);  // bearing 0 = up, clockwise
 int bearingOf(int dx, int dy);                            // 0..359
 // Sonar position from RSSI and the indicative bearing: radius linear in dBm

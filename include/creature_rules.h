@@ -15,6 +15,9 @@ constexpr uint32_t kWindowMs = 180000;  // 3 minutes
 constexpr uint16_t kHatchAt = 1;
 constexpr uint16_t kSizeAt[3] = {30, 60, 120};  // sizes 2..4
 constexpr uint8_t kMaxSize = 4;
+// PET: forget the 25 oldest devices of the window (all when fewer), so the
+// creature shrinks at once; it still never turns back into an egg.
+constexpr int kPetForget = 25;
 // 0 = egg, 1..4. 'hatched' keeps a hatched creature at size >= 1.
 inline uint8_t sizeFor(uint16_t recent, bool hatched) {
   if (recent < kHatchAt) return hatched ? 1 : 0;

@@ -3,12 +3,17 @@
 // RAM-only wardriving log for the StopWatch. See include/wardriving.h.
 #ifdef CYD32_HW_M5STACK_STOPWATCH
 #include "wardriving.h"
+#include "big_alloc.h"
+#include "boot_log.h"
 #include <Arduino.h>
 #include <string.h>
 
 namespace {
-wardriving::Rec table[wardriving::kCap];  // BSS: zeroed at reboot, never persisted
-int used = 0;
+// Heap, allocated once in begin() in PSRAM (internal heap as the fallback):
+// ~20 KB that v0.2.0-test5 kept in internal .bss. RAM only, gone at reboot.
+wardriving::Rec *table = nullptr;
+det::Entry *snap = nullptr;  // det::snapshot() scratch, ~2.7 KB
+int cap = 0, used = 0;
 bool running = false;
 uint32_t startedAt = 0;
 
@@ -26,7 +31,7 @@ void upsert(const det::Entry &e) {
   // Raw BSSIDs and SSIDs are never present in that table.
   int slot = findId(e.id);
   if (slot < 0) {
-    slot = used < wardriving::kCap ? used++ : oldestSlot();
+    slot = used < cap ? used++ : oldestSlot();
     table[slot].id = e.id;
     table[slot].firstMs = e.lastSeen;
   }
@@ -40,7 +45,11 @@ void upsert(const det::Entry &e) {
 
 namespace wardriving {
 void begin() {
-  // table[] is BSS (zero at boot). Do not touch NVS, files or the serial port.
+  // Do not touch NVS or files. Zero-filled RAM, never persisted.
+  if (!table) table = (Rec *)cyd32_big_alloc(sizeof(Rec) * kCap);
+  if (!snap) snap = (det::Entry *)cyd32_big_alloc(sizeof(det::Entry) * det::kMax);
+  cap = (table && snap) ? kCap : 0;  // no buffer: the log stays empty instead of crashing
+  if (!cap) BOOT_LOG("wardriving: buffer allocation failed, log disabled");
   used = 0;
   running = false;
   startedAt = 0;
@@ -51,8 +60,7 @@ void start() {
   startedAt = millis();
 }
 void loop() {
-  if (!running) return;
-  static det::Entry snap[det::kMax];  // static: ~2.7 KB, kept off the loop task stack
+  if (!running || !cap) return;
   const int n = det::snapshot(snap, det::kMax);
   for (int i = 0; i < n; i++) upsert(snap[i]);
 }

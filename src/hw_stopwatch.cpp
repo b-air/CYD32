@@ -109,6 +109,27 @@ void clearButtons() { poll(); latchA = latchB = latchAH = latchBH = false; }
 bool btnAPressed() { poll(); return M5.BtnA.isPressed(); }
 bool btnBPressed() { poll(); return M5.BtnB.isPressed(); }
 int batteryPct() { return (int)M5.Power.getBatteryLevel(); }
+// Proximity beep: built-in speaker (ES8311 codec on I2S0). M5.Speaker is only
+// started while the beep is ON (no I2S driver, DMA buffers or task while OFF)
+// and ended when it is switched OFF. tone() would start it lazily, so it is
+// never called while OFF.
+bool spkOn = false;
+void beepPower(bool on) {
+  if (on == spkOn) return;
+  if (on) {
+    spkOn = M5.Speaker.begin();
+    M5.Speaker.setVolume(110);  // moderate (0..255)
+    BOOT_LOG("beep: speaker %s", spkOn ? "on" : "FAILED");
+  } else {
+    spkOn = false;
+    M5.Speaker.stop();
+    M5.Speaker.end();
+    BOOT_LOG("beep: speaker off");
+  }
+}
+void beepTone(uint16_t hz, uint16_t ms) {
+  if (spkOn) M5.Speaker.tone(hz, ms);
+}
 void fatal(const char *msg) {
   BOOT_LOG("FATAL: %s. Halted.", msg);
   M5.Display.fillScreen(0x0000);

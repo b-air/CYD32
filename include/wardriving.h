@@ -2,9 +2,10 @@
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
 // StopWatch RAM-only wardriving log. Records salted detection IDs already
 // produced by privacy::macId (the same scheme as the live table). Nothing is
-// written to NVS, flash, serial or any network path. The table lives in BSS
-// and is cleared at reboot. Compiled in only on the StopWatch target.
-// RULE: bearing / grid cell (unsalted FNV-1a, bearing.h) are display-only and must never be written to any SD export, serial output, log or file (scripts/guard.sh checks output calls).
+// written to NVS, flash, serial or any network path. The table is allocated
+// once in PSRAM at boot (RAM only) and is gone at reboot. Compiled in only on
+// the StopWatch target.
+// RULE: the indicative bearing (unsalted FNV-1a, bearing.h) is display-only and must never be written to any SD export, serial output, log or file (scripts/guard.sh checks output calls).
 #pragma once
 #include <stdint.h>
 #include "detections.h"
@@ -21,7 +22,7 @@ struct Rec {
   uint8_t kind;      // det::Kind
   uint16_t bearing;  // indicative bearing (det::Entry::bearing), NOT a direction; display only, never exported
 };
-void begin();                // no-op besides documenting BSS zero-init
+void begin();                // allocates the RAM table (PSRAM), empty log
 void start();                // open / resume a session (first visit to the screen)
 void loop();                 // poll det::snapshot() and upsert; silent
 bool active();

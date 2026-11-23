@@ -19,11 +19,17 @@ version strings in these images are **EXAMPLE DATA**.
 - The StopWatch `firmware-host/` images were re-rendered after
   `v0.2.0-test3` (full-panel layout, larger text, A / B key tags at 310 /
   050 deg, tab band on every screen, outlined menu).
-- `firmware-host-b5/`: batch 5 (A / B navigation, 8-entry menu, RSSI sonar
-  with indicative angle, CLOSE / VERY CLOSE rings and trails, TRACKERS,
-  DRONES, DEVICE DETAIL, dashboard pages, creature egg / size 2 / size 4)
-  for both targets, rendered the same way from the real UI, detections and
-  creature code with synthetic addresses (`sw-02`: after A short on SONAR;
-  `sw-16`: after A long then B long). The superseded sonar, grid, creature,
-  menu, counters, details and wardriving images were removed from
-  `firmware-host/`; boot, about, update, OTA and unsigned are unchanged.
+- `firmware-host-b6/`: batch 6 (`v0.2.0-test6` candidate) for both targets,
+  rendered the same way from the real UI, detections, beep and creature code
+  with synthetic addresses: SONAR in ALL mode and in TRK mode with the
+  proximity BEEP on (`02`), DASHBOARD (COUNTERS, then the WIFI, BLE, RID,
+  TAGGED and LOG views), the 6-entry MENU (SONAR, COUNTERS, WARDRIVE,
+  CREATURE, BEEP, OTA) with BEEP off and on, WARDRIVE, DEVICE DETAIL, ABOUT
+  with Wi-Fi OK and with an example Wi-Fi start error (`10b`), OTA confirm /
+  OTA, and the creature at size 1 (after PET), size 4, and the FEED drone in
+  flight and being eaten (`14`, `14b`). The grid, TORPEDO and the old
+  TRACKERS / DRONES / filter screens no longer exist and batch 5
+  (`firmware-host-b5/`) was removed. The design `reference/` still shows the
+  v9 grid; it is not in the firmware any more. `firmware-host/` keeps boot,
+  about, update, OTA and unsigned (ABOUT now also has the Wi-Fi status
+  lines shown in `firmware-host-b6/`).

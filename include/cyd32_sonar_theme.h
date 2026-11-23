@@ -64,8 +64,6 @@ static const uint8_t cyd_sonar_ring_r[4] = { 18, 36, 54, 72 };   /* last = rim (
 #define CYD_SONAR_TICK_LEN_10         5      /* G3 */
 #define CYD_SONAR_TICK_LEN_30         8      /* G4 */
 #define CYD_SONAR_LABEL_R             88     /* unscii_8, centre of label */
-#define CYD_SONAR_COL_PITCH_X10       144    /* A-J column pitch 14.4 px */
-#define CYD_SONAR_ROW_PITCH           16     /* rows 1-8 */
 #define CYD_SONAR_ECHO_R              2      /* core; halo = 4 */
 #define CYD_SONAR_TARGET_BOX          13     /* corner-bracket box, legs 4 px */
 #define CYD_HEADER_H                  17     /* G1 strip 0..16, G2 rule at y = 17 */
@@ -108,7 +106,7 @@ static const uint8_t sw_boot_ring_r[4]  = { 48, 97, 145, 194 };  /* G1 rings, ri
    StopWatch geometry uses the whole 466 px panel (outer ink at r <= 227). */
 #define SW_TAB_R0                     160
 #define SW_TAB_R1                     225
-#define SW_TAB_BRG0                   130    /* MENU | CREA | GRID | SONAR from 130 to 230 deg */
+#define SW_TAB_BRG0                   130    /* MENU | CREA | DASH | SONAR from 130 to 230 deg */
 #define SW_TAB_BRG1                   230
 #define SW_TAB_SPAN_DEG               25
 #define SW_TAB_GAP_DEG                2
@@ -118,12 +116,6 @@ static const uint8_t sw_boot_ring_r[4]  = { 48, 97, 145, 194 };  /* G1 rings, ri
 #define SW_BOOT_TITLE_Y               182    /* img_cyd32_title_sw */
 #define SW_BOOT_SUBTITLE_Y            236    /* "DEFENSIVE SONAR" unscii_16, G4 */
 #define SW_BOOT_DEVICE_Y              270    /* "STOPWATCH" Montserrat 14, G3 */
-/* StopWatch GRID (green-leaning): 10 x 8 cells of 22 px, origin below; labels unscii_16 G4 */
-#define SW_GRID_X0                    123
-#define SW_GRID_Y0                    106
-#define SW_GRID_CELL                  22
-#define SW_GRID_PLATE_Y0              292    /* chamfered info plate 200 x 44, G2 outline, G1 fill */
-#define SW_GRID_PLATE_H               44
 #define SW_RIM_R                      226    /* green bezel ring (G2) + 10/30 deg ticks, gap behind the tab band */
 /* Wardriving (signal-only): radius from RSSI, angle = stable hash of the address (NOT a direction) */
 static const int8_t sw_ward_ring_dbm[4] = { -40, -55, -70, -85 };

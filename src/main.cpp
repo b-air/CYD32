@@ -16,6 +16,7 @@
 #include "boot_log.h"
 #include "ota_rollback.h"
 #include <esp_heap_caps.h>
+#include "beep.h"
 #include <esp_timer.h>
 #include "cyd32_build_gen.h"
 #ifdef CYD32_HW_M5STACK_STOPWATCH
@@ -217,7 +218,11 @@ void loop() {
     static uint32_t lastWd = 0;  // the RAM log does not need more than 2 Hz
     if (now - lastWd >= 500) { lastWd = now; wardriving::loop(); }
 #endif
+    uint32_t pinned = 0;
+    const bool hasPinned = ui::pinnedTarget(pinned);
+    beep::tick(now, hasPinned, pinned);  // no-op while the beep is OFF (default)
     if (ui::takeUpdateRequest()) {
+      beep::setEnabled(false);
       scanner::stop();
       ota_portal::start(unsignedArmed);
       unsignedArmed = false;
