@@ -6,7 +6,7 @@
 
 - Release page: <https://github.com/b-air/CYD32/releases/tag/v0.2.0-test6>
 - **Private repository:** every `github.com/b-air/CYD32/...` link in this guide (release page and downloads) works only when you are **signed in to GitHub** with an account that has access to `b-air/CYD32`. Otherwise GitHub shows **404 – Not Found**.
-- There is no "Latest" release: all CYD32 builds so far are pre-releases, so `https://github.com/b-air/CYD32/releases/latest` shows 404. Open the `v0.2.0-test6` link above directly.
+- There is no "Latest" release: all CYD32 builds so far are pre-releases. Open the `v0.2.0-test6` link above directly, or the full list of releases: <https://github.com/b-air/CYD32/releases>.
 
 > ⚠️ **HARDWARE TEST STATUS.** `v0.2.0-test6` is a preview test build, **not tested on hardware yet** (neither board). Follow these steps to test it, and expect problems.
 
