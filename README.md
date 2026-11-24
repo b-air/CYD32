@@ -3,8 +3,7 @@
 # CYD32
 
 Educational, **passive (receive-only)** radio "sonar" firmware. Two board
-targets are built from this repository (signed firmware images for both are
-published on the `v0.2.0-test1` pre-release and listed in its `SHA256SUMS`):
+targets are built from this repository:
 
 - `cyd` — ESP32-2432S028 "Cheap Yellow Display" (ILI9341 320x240, XPT2046
   touch, 4 MB flash).
@@ -19,7 +18,45 @@ and take on a Cthulhu form as they meet drones broadcasting Remote ID.
 On the StopWatch the v7 sprites are reused and upscaled with an integer
 nearest-neighbour blit at 3x (192 px) into a PSRAM buffer.
 
-![screens](docs/screenshots/board.png)
+## Download (current test build: `v0.2.0-test6`)
+
+**[`v0.2.0-test6`](https://github.com/b-air/CYD32/releases/tag/v0.2.0-test6)** — pre-release, 24 Nov 2026,
+commit `8bb5917118a2`. **Unsigned (USB install only), not tested on hardware
+yet.** The repository is **private**: sign in to GitHub with an account that
+has access, otherwise every link below shows 404. There is no "Latest"
+release (all builds are pre-releases), so use these links directly.
+
+| Board | Firmware (direct link) | Size | SHA-256 |
+|---|---|---|---|
+| CYD | [`firmware-cyd.bin`](https://github.com/b-air/CYD32/releases/download/v0.2.0-test6/firmware-cyd.bin) | 1,633,872 bytes | `9c528f006a57f094d5de708a91558fea0fe16e89b14dbd16b80c64d7c0cb3734` |
+| StopWatch | [`firmware-m5stack-stopwatch.bin`](https://github.com/b-air/CYD32/releases/download/v0.2.0-test6/firmware-m5stack-stopwatch.bin) | 1,740,544 bytes | `be186d7d7c4b9694d8b941ee7b02dd2e8e52dae651d81c5db26913a951f7cd27` |
+
+- **Already on `v0.2.0-test5`?** Flash only the firmware file above at
+  `0x10000`, without Erase all (the other three files did not change):
+  [docs/INSTALL.md](docs/INSTALL.md#already-on-v020-test5-update-with-one-file).
+- **First install:** four files per board (bootloader, partitions, boot_app0,
+  firmware), step by step in [docs/INSTALL.md](docs/INSTALL.md).
+- All checksums: [`SHA256SUMS`](https://github.com/b-air/CYD32/releases/download/v0.2.0-test6/SHA256SUMS).
+  Version history: [CHANGELOG.md](CHANGELOG.md).
+
+## Screens (`v0.2.0-test6`)
+
+Host renders of the real firmware UI code (LVGL 9.2.2 on a PC, example data,
+not photos of the hardware). All of them are in
+[`docs/screenshots/v9/firmware-host-b6/`](docs/screenshots/v9/firmware-host-b6/).
+
+| CYD | StopWatch |
+|---|---|
+| ![CYD sonar, all devices](docs/screenshots/v9/firmware-host-b6/cyd-01-sonar-all.png) | ![StopWatch sonar, all devices](docs/screenshots/v9/firmware-host-b6/sw-01-sonar-all.png) |
+| SONAR, mode ALL | SONAR, mode ALL |
+| ![CYD sonar, TRK mode, beep on](docs/screenshots/v9/firmware-host-b6/cyd-02-sonar-filtered-trk.png) | ![StopWatch sonar, TRK mode, beep on](docs/screenshots/v9/firmware-host-b6/sw-02-sonar-filtered-trk.png) |
+| SONAR, mode TRK, proximity beep on | SONAR, mode TRK, proximity beep on |
+| ![CYD dashboard, WIFI view](docs/screenshots/v9/firmware-host-b6/cyd-04-dash-wifi.png) | ![StopWatch dashboard counters](docs/screenshots/v9/firmware-host-b6/sw-03-dash-counters.png) |
+| DASH, WIFI view | DASH, COUNTERS page |
+| ![CYD menu](docs/screenshots/v9/firmware-host-b6/cyd-07-menu-beep-on.png) | ![StopWatch menu](docs/screenshots/v9/firmware-host-b6/sw-07-menu-beep-on.png) |
+| MENU (6 entries, BEEP ON) | MENU (6 entries, BEEP ON) |
+| ![CYD creature, size 4](docs/screenshots/v9/firmware-host-b6/cyd-13-creature-stage4.png) | ![StopWatch creature, FEED](docs/screenshots/v9/firmware-host-b6/sw-14b-creature-feed-chomp.png) |
+| CREA, size 4 | CREA, FEED (+2 XP) |
 
 From `v0.2.0-test3` the boot, sonar and (StopWatch) wardriving screens use the
 v9 green phosphor radar theme: a procedural PPI scope with a 3 s clockwise
@@ -28,10 +65,10 @@ drones (#FCEE0A on both boards). The StopWatch boot screen shows the M5Stack
 logo; every other StopWatch screen is phosphor green on black, and the screens
 with the 4 tabs (SONAR / DASH / CREA / MENU) use the curved tab band. On the CYD the remaining
 screens use the same phosphor tokens (README section 7 of the design). The
-first screen after boot is the creature (an egg that hatches, then grows with
-detections). Reference renders and host renders of the firmware are in
-[`docs/screenshots/v9/`](docs/screenshots/v9/) (counters and contacts there are
-EXAMPLE DATA; not tested on hardware yet).
+first screen after boot is the SONAR; the creature (CREA tab) starts as an egg
+that hatches at the first device, then grows with detections. Design
+reference renders and older host renders are archived in
+[`docs/screenshots/v9/`](docs/screenshots/v9/) (EXAMPLE DATA).
 
 ## What it does (and does not do)
 
@@ -76,12 +113,14 @@ EXAMPLE DATA; not tested on hardware yet).
 
 CYD, pin map (single-USB ESP32-2432S028): TFT on HSPI (SCK 14, MOSI 13, MISO 12,
 CS 15, DC 2, BL 21), touch on its own SPI (SCK 25, MOSI 32, MISO 39, CS 33,
-IRQ 36). Touch calibration is in `src/hw.cpp`.
+IRQ 36). Touch calibration is in `src/hw.cpp`. The optional proximity beep uses
+the SPEAK connector (GPIO 26): plug a small speaker or buzzer there; the board
+has none of its own.
 
 StopWatch (verified against the official M5Stack documentation): ESP32-S3R8,
 16 MB flash, 8 MB OPI PSRAM (`qio_opi`). CO5300 QSPI on G39 CS, G40 SCK,
 G38 TE, G41/G42/G46/G45 data; display reset on M5IOE1 PYG5. CST820B touch on
-G47 SDA, G48 SCL, G13 INT; touch reset on M5IOE1 PYG4. KEYA (yellow) is GPIO2 and is BACK; KEYB (blue) is GPIO1 and is SELECT.
+G47 SDA, G48 SCL, G13 INT; touch reset on M5IOE1 PYG4. KEYA (yellow) is GPIO2 and is NEXT; KEYB (blue) is GPIO1 and is SELECT (held: see docs/NAVIGATION.md).
 The power button is not mapped (the PMIC handles on/off). There is no microSD.
 M5Unified and M5GFX drive the panel, touch and buttons. The native 466x466
 round HUD is in `src/ui_round.cpp` (metrics in `include/ui_layout_round.h`).
@@ -162,20 +201,12 @@ The About screen shows the status and the fingerprint of the verifying key
 
 ## Known TODOs
 
-- Test on real hardware: Wi-Fi `WIFI_MODE_NULL` + promiscuous capture, BLE/Wi-Fi
-  time-slicing, touch calibration, OTA end to end with rollback. The StopWatch
-  target has not been run on a device yet (AMOLED colour endianness, circular
-  clip, CST820B touch including the r=213 safe circle, KEYA NEXT / KEYB SELECT,
-  A+B long-press menu, KEYA unsigned-mode gesture, battery reading, creature
-  x3 blit, RAM-only wardriving, OTA, scanner).
-- Batch 5 (hardware untested): A / B short and long presses, sonar refresh
-  rate and trail, shorter scanner slices, badge signatures, heap use on the CYD
-  (about 8 KB of tables moved from static RAM to the heap).
-- Batch 6 (hardware untested): StopWatch Wi-Fi start-up fix (Wi-Fi before BLE,
-  real error codes, retry every 30 s, LVGL pool and tables in PSRAM; Wi-Fi
-  status on ABOUT), 6-entry menu, sonar modes, dashboard views, proximity beep
-  (CYD: needs a small speaker on the SPEAK connector), creature PET / FEED and
-  larger sizes. GRID and TORPEDO removed.
+- Hardware test of `v0.2.0-test6` on both boards (see the checklist in the
+  release notes): StopWatch Wi-Fi start-up fix, sonar modes, dashboard views,
+  proximity beep (CYD: small speaker on SPEAK), creature PET / FEED, heap use.
+- Still to confirm on hardware: OTA end to end with rollback (needs a signed
+  release), StopWatch battery reading, RAM-only wardriving, RF silence outside
+  update mode (monitor-mode capture).
 - Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
   `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
   arduino-esp32 3.x / ESP-IDF 5.

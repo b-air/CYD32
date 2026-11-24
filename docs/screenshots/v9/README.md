@@ -3,8 +3,9 @@
 **UNTESTED ON HARDWARE.** All counters, contacts, IDs, RSSI values, timers and
 version strings in these images are **EXAMPLE DATA**.
 
-- `reference/`: the design reference renders (1x, RGB565-quantised) from the
-  final v9 design package, including the StopWatch grid (`sw-03-grid.png`).
+- `reference/`: archived design reference renders (1x, RGB565-quantised)
+  from the v9 design package. They show the earlier screen set, not the
+  `v0.2.0-test6` firmware; use `firmware-host-b6/` for the current screens.
 - `firmware-host/`: the real `src/ui.cpp` / `src/ui_round.cpp` /
   `src/ui_radar.cpp` rendered on a PC with LVGL 9.2.2 (32-bit build, the
   board's `lv_conf.h`, 40-line partial draw buffer) and stubbed data. On the
@@ -19,7 +20,7 @@ version strings in these images are **EXAMPLE DATA**.
 - The StopWatch `firmware-host/` images were re-rendered after
   `v0.2.0-test3` (full-panel layout, larger text, A / B key tags at 310 /
   050 deg, tab band on every screen, outlined menu).
-- `firmware-host-b6/`: batch 6 (`v0.2.0-test6` candidate) for both targets,
+- `firmware-host-b6/`: **the current screens** (`v0.2.0-test6`) for both targets,
   rendered the same way from the real UI, detections, beep and creature code
   with synthetic addresses: SONAR in ALL mode and in TRK mode with the
   proximity BEEP on (`02`), DASHBOARD (COUNTERS, then the WIFI, BLE, RID,
@@ -27,9 +28,6 @@ version strings in these images are **EXAMPLE DATA**.
   CREATURE, BEEP, OTA) with BEEP off and on, WARDRIVE, DEVICE DETAIL, ABOUT
   with Wi-Fi OK and with an example Wi-Fi start error (`10b`), OTA confirm /
   OTA, and the creature at size 1 (after PET), size 4, and the FEED drone in
-  flight and being eaten (`14`, `14b`). The grid, TORPEDO and the old
-  TRACKERS / DRONES / filter screens no longer exist and batch 5
-  (`firmware-host-b5/`) was removed. The design `reference/` still shows the
-  v9 grid; it is not in the firmware any more. `firmware-host/` keeps boot,
+  flight and being eaten (`14`, `14b`). `firmware-host/` keeps boot,
   about, update, OTA and unsigned (ABOUT now also has the Wi-Fi status
   lines shown in `firmware-host-b6/`).
