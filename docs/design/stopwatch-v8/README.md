@@ -14,7 +14,9 @@ and OTA status. It does not embed these PNGs.
 
 Files:
 
-- `screens/` — boot, sonar, grid, detail, wardriving, OTA, creature, evolution,
-  easter egg, radial menu, W/B/R counters
+- `screens/` — archived v8 mockups (boot, sonar, detail, wardriving, OTA,
+  creature, evolution, radial menu, W/B/R counters and screens that the
+  current firmware no longer has). Current screens:
+  `docs/screenshots/v9/firmware-host-b6/`
 - `overlays/` — button mapping and 48 px touch zones
 - `planche-stopwatch.png` — overview board

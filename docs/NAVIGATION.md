@@ -1,4 +1,4 @@
-# Navigation (v0.2 batch 6)
+# Navigation (`v0.2.0-test6`)
 
 Both targets share one screen tree (`src/ui_common.cpp`). SONAR is the home
 screen (`ui::HOME`).
@@ -6,8 +6,7 @@ screen (`ui::HOME`).
 ## Tabs and menu
 
 The 4 tabs are **SONAR / DASH / CREA / MENU** (curved band on the StopWatch,
-bottom row on the CYD). DASH opens the dashboard (COUNTERS). The GRID screen
-and its TORPEDO easter egg were removed in batch 6.
+bottom row on the CYD). DASH opens the dashboard (COUNTERS).
 
 MENU has the same 6 entries on both targets:
 
@@ -103,8 +102,8 @@ drones excluded), **LOG**.
   LOG (7 rows each). Swipe left / right = next / previous page; tap the title
   = next page; tap a row = DEVICE DETAIL. Keys: see above.
 
-The old FILTERS page and the TRACKERS / DRONES screens are gone: the sonar
-modes and the dashboard views replace them.
+The sonar modes and the dashboard views are the only category selectors:
+there is no separate tracker or drone screen.
 
 ## Creature
 

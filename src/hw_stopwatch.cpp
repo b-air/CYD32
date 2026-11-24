@@ -118,7 +118,7 @@ void beepPower(bool on) {
   if (on == spkOn) return;
   if (on) {
     spkOn = M5.Speaker.begin();
-    M5.Speaker.setVolume(110);  // moderate (0..255)
+    if (spkOn) M5.Speaker.setVolume(110);  // moderate (0..255)
     BOOT_LOG("beep: speaker %s", spkOn ? "on" : "FAILED");
   } else {
     spkOn = false;

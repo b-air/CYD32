@@ -56,7 +56,7 @@ the `esp_err_t`). Now:
 
 ## Angle (indicative)
 
-Before (v0.2): the sonar position was `mix(id) % 80` mapped to a grid cell,
+Before (v0.2): the sonar position was `mix(id) % 80` mapped to one of 80 cells,
 where `id = SHA-256(random per-boot salt || MAC)`. The position was therefore
 different on every device and after every reboot, and RSSI was not used on the
 sonar. The StopWatch wardriving view used `crc8(id) * 360 / 256` for the angle.
@@ -66,9 +66,9 @@ Now (`src/bearing.cpp`), shared by both targets:
 - `h = FNV-1a 32-bit` (offset 0x811C9DC5, prime 0x01000193) over the 6
   address bytes in display order (BLE addresses are reversed from NimBLE's
   little-endian order first).
-- angle = `(h * 360) >> 32` (0..359). The GRID screen and its cell
-  (`(h >> 8) % 80`) were removed in batch 6; contact labels on the sonar are
-  now the first hex digits of the salted per-boot ID, as in the lists.
+- angle = `(h * 360) >> 32` (0..359). This is the only unsalted value
+  derived from the address. Contact labels on the sonar are the first hex
+  digits of the salted per-boot ID, as in the lists.
 - Deterministic and unsalted: the same address gets the same angle on every
   CYD32 and after reboots, so two devices side by side agree. The UI says
   "ANGLE INDICATIVE" / "angle is indicative".

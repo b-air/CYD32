@@ -46,7 +46,7 @@ LGFX_CYD tft;
 // LEDC channel 4 (timer 2): the backlight uses channel 7 (timer 3). GPIO26 is
 // only attached while the beep is ON; an esp_timer ends each tone.
 constexpr int kSpkPin = 26, kSpkCh = 4, kSpkDuty = 24;  // 8-bit duty ~9 %: moderate volume
-bool spkOn = false;
+volatile bool spkOn = false;  // also read by the esp_timer task (spkOff)
 uint32_t spkHz = 0;
 esp_timer_handle_t spkTimer = nullptr;
 void spkOff(void *) { if (spkOn) ledcWrite(kSpkCh, 0); }
@@ -90,10 +90,11 @@ void beepPower(bool on) {
   }
 }
 void beepTone(uint16_t hz, uint16_t ms) {
-  if (!spkOn) return;
+  if (!spkOn || !spkTimer) return;  // no timer: a tone could not be ended
   if (hz != spkHz) { spkHz = hz; ledcChangeFrequency(kSpkCh, hz, 8); }
   ledcWrite(kSpkCh, kSpkDuty);
-  if (spkTimer) { esp_timer_stop(spkTimer); esp_timer_start_once(spkTimer, (uint64_t)ms * 1000u); }
+  esp_timer_stop(spkTimer);
+  esp_timer_start_once(spkTimer, (uint64_t)ms * 1000u);
 }
 void fatal(const char *msg) {
   BOOT_LOG("FATAL: %s. Halted.", msg);

@@ -316,6 +316,7 @@ void onScopeRelease(lv_event_t *) {
     return;
   }
   if (ax > 12 || ay > 12) return;
+  if (!radarObj) return;  // screen rebuilt between press and release
   lv_area_t a;
   lv_obj_get_coords(radarObj, &a);
   const radar::Style s = cydStyle(false);
