@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <esp_wifi.h>
+#include <esp_heap_caps.h>
 #include <WiFi.h>
 #include <string.h>
 #include "boot_log.h"
@@ -26,7 +27,48 @@ uint32_t phaseStart = 0, lastHop = 0;
 uint8_t channel = 1;
 bool stopped = false;
 bool wifiOk = false, wifiTried = false, wifiReady = false, bleInitOk = false, bleStartOk = false;
-esp_err_t wifiErr = ESP_OK;  // last Wi-Fi bring-up / promiscuous error
+esp_err_t wifiErr = ESP_OK;  // last Wi-Fi bring-up / promiscuous error (the real code, not ESP_FAIL)
+const char *wifiStep = "";   // failing step: "init", "start", "promisc"
+// Retry the Wi-Fi bring-up every 30 s while it is not ready (BLE keeps
+// scanning in between). v0.2.0-test5 tried once at boot and never again.
+constexpr uint32_t kWifiRetryMs = 30000;
+uint32_t wifiLastTry = 0;
+uint16_t wifiAttempts = 0;
+uint32_t heapFreeInt = 0, heapLargestInt = 0, heapLargestDma = 0, heapFreePsram = 0;
+
+void sampleHeap(const char *when) {
+  heapFreeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  heapLargestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  heapLargestDma = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+  heapFreePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  BOOT_LOG("heap %s: internal free=%u largest=%u, dma largest=%u, psram free=%u", when, (unsigned)heapFreeInt,
+           (unsigned)heapLargestInt, (unsigned)heapLargestDma, (unsigned)heapFreePsram);
+}
+
+// WiFi.mode() only returns false: Arduino logs the esp_wifi_init /
+// esp_wifi_start code at error level and drops it. Find the step that failed
+// and its real esp_err_t, without leaving a half-initialised driver behind
+// (a successful probe is undone, so Arduino's own state stays consistent and
+// the next WiFi.mode() starts from scratch).
+void diagnoseWifiFailure() {
+  wifi_mode_t m;
+  if (esp_wifi_get_mode(&m) == ESP_ERR_WIFI_NOT_INIT) {
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // Same buffer settings as Arduino's wifiLowLevelInit (dynamic buffers).
+    cfg.static_tx_buf_num = 0; cfg.dynamic_tx_buf_num = 32; cfg.tx_buf_type = 1;
+    cfg.cache_tx_buf_num = 4; cfg.static_rx_buf_num = 4; cfg.dynamic_rx_buf_num = 32;
+    const esp_err_t e = esp_wifi_init(&cfg);
+    wifiStep = "init";
+    wifiErr = e == ESP_OK ? ESP_FAIL : e;  // ESP_OK here = transient (or the netif step failed)
+    if (e == ESP_OK) esp_wifi_deinit();
+  } else {
+    const esp_err_t e = esp_wifi_start();
+    wifiStep = "start";
+    wifiErr = e == ESP_OK ? ESP_FAIL : e;
+    if (e == ESP_OK) esp_wifi_stop();
+  }
+  BOOT_LOG("wifi: driver %s failed = %s (%d)", wifiStep, esp_err_to_name(wifiErr), (int)wifiErr);
+}
 
 // ASTM F3411 Remote ID over Wi-Fi beacon: vendor IE with OUI FA:0B:BC, type 0x0D.
 bool hasRemoteIdIe(const uint8_t *ies, int len) {
@@ -163,9 +205,18 @@ BleCb bleCb;
 //    driver refuses promiscuous mode in NULL mode, we fall back to the idle
 //    station, which is just as silent.
 void initWifi() {
+  wifiLastTry = millis();
+  wifiAttempts++;
+  wifiReady = false;
+  sampleHeap(wifiAttempts == 1 ? "before wifi init" : "before wifi retry");
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
-  if (!WiFi.mode(WIFI_STA)) { wifiErr = ESP_FAIL; BOOT_LOG("wifi: driver start failed"); return; }
+  if (!WiFi.mode(WIFI_STA)) {
+    diagnoseWifiFailure();
+    sampleHeap("after wifi failure");
+    return;
+  }
+  wifiStep = "";
   wifi_config_t blank = {};
   esp_err_t e = esp_wifi_set_config(WIFI_IF_STA, &blank);
   BOOT_LOG("wifi: clear STA config = %s (%d)", esp_err_to_name(e), (int)e);
@@ -185,6 +236,8 @@ void initWifi() {
   esp_wifi_set_promiscuous(false);
   wifiReady = e == ESP_OK;
   wifiErr = e;
+  if (!wifiReady) wifiStep = "promisc";
+  BOOT_LOG("wifi: bring-up #%u %s", (unsigned)wifiAttempts, wifiReady ? "ok" : "FAILED");
 }
 void startWifi() {
   wifiTried = true;
@@ -193,6 +246,7 @@ void startWifi() {
   if (e != wifiErr || !wifiOk) BOOT_LOG("wifi: promiscuous on = %s (%d)", esp_err_to_name(e), (int)e);
   wifiErr = e;
   wifiOk = e == ESP_OK;
+  if (wifiReady && !wifiOk) wifiStep = "promisc";
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
   phase = WIFI_PH; phaseStart = lastHop = millis();
 }
@@ -210,19 +264,28 @@ void stopBle() { NimBLEDevice::getScan()->stop(); NimBLEDevice::getScan()->clear
 
 namespace scanner {
 void begin() {
+  // Wi-Fi first: its driver needs large contiguous internal RAM blocks, so it
+  // is brought up before NimBLE takes its share (v0.2.0-test5 initialised
+  // NimBLE first). Then exercise BLE once so the self-test covers both radios.
+  initWifi();
   NimBLEDevice::init("");
   bleInitOk = NimBLEDevice::getInitialized();
-  // Exercise both radios once at boot so the self-test covers them.
   startBle();
   stopBle();
-  initWifi();
-  startWifi();
-  BOOT_LOG("scanner: wifi=%s (%s) ble init=%d scan=%d", wifiOk ? "ok" : "FAILED", esp_err_to_name(wifiErr),
-           (int)bleInitOk, (int)bleStartOk);
+  if (wifiReady) startWifi();
+  else { wifiTried = true; startBle(); }  // BLE only until a retry succeeds
+  BOOT_LOG("scanner: wifi=%s (%s, step %s) ble init=%d scan=%d", wifiOk ? "ok" : "FAILED", esp_err_to_name(wifiErr),
+           wifiStep[0] ? wifiStep : "-", (int)bleInitOk, (int)bleStartOk);
 }
 void loop() {
   if (stopped) return;
   const uint32_t now = millis();
+  if (!wifiReady && now - wifiLastTry >= kWifiRetryMs) {
+    if (phase == BLE_PH) stopBle();
+    initWifi();
+    if (wifiReady) { startWifi(); return; }
+    startBle();
+  }
   if (phase == WIFI_PH) {
     if (now - lastHop >= kHopMs) {
       hopIdx = (uint8_t)((hopIdx + 1) % sizeof kHop);
@@ -232,7 +295,8 @@ void loop() {
     }
     if (now - phaseStart >= kWifiSliceMs) { stopWifi(); startBle(); }
   } else if (phase == BLE_PH && now - phaseStart >= kBleSliceMs) {
-    stopBle(); startWifi();
+    if (wifiReady) { stopBle(); startWifi(); }
+    else phaseStart = now;  // no Wi-Fi: the continuous BLE scan simply goes on
   }
 }
 void stop() {
@@ -244,5 +308,17 @@ void stop() {
 }
 bool wifiActive() { return phase == WIFI_PH; }
 bool healthy() { return wifiOk && bleInitOk && bleStartOk; }
-bool wifiFailed() { return wifiTried && !wifiOk; }
+bool wifiFailed() { return wifiTried && (!wifiReady || !wifiOk); }
+WifiDiag wifiDiag() {
+  WifiDiag d;
+  d.ready = wifiReady && wifiOk;
+  d.err = (int)wifiErr;
+  d.errName = wifiErr == ESP_OK ? "ESP_OK" : esp_err_to_name(wifiErr);
+  d.step = wifiStep;
+  d.attempts = wifiAttempts;
+  const uint32_t since = millis() - wifiLastTry;
+  d.retryInMs = (wifiReady || stopped) ? 0 : (since >= kWifiRetryMs ? 0 : kWifiRetryMs - since);
+  d.freeInt = heapFreeInt; d.largestInt = heapLargestInt; d.largestDma = heapLargestDma; d.freePsram = heapFreePsram;
+  return d;
+}
 }

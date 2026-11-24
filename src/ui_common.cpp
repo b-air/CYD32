@@ -5,10 +5,27 @@
 #include <string.h>
 #include "rssi_track.h"
 #include "signatures.h"
+#include "creature.h"
+#include "creature_rules.h"
 namespace uic {
-const ui::Screen kMenuScr[kMenuN] = {ui::SONAR, ui::GRID, ui::TRACKERS, ui::DRONES,
-                                     ui::WARDRIVING, ui::CREATURE, ui::COUNTERS, ui::UPDATE_CONFIRM};
-const char *const kMenuTxt[kMenuN] = {"SONAR", "GRID", "TRACKERS", "DRONES", "WARDRIVE", "CREATURE", "COUNTERS", "OTA"};
+const ui::Screen kMenuScr[kMenuN] = {ui::SONAR, ui::COUNTERS, ui::WARDRIVING, ui::CREATURE, ui::BEEP, ui::UPDATE_CONFIRM};
+const char *const kMenuTxt[kMenuN] = {"SONAR", "COUNTERS", "WARDRIVE", "CREATURE", "BEEP", "OTA"};
+const char *const kViewTxt[V_COUNT] = {"WIFI", "BLE", "RID", "TAGGED", "LOG"};
+bool inView(const det::Entry &e, View v) {
+  switch (v) {
+    case V_WIFI: return det::inCat(e, det::CAT_WIFI);
+    case V_BLE: return det::inCat(e, det::CAT_BLE);
+    case V_RID: return det::inCat(e, det::CAT_RID);
+    case V_TAGGED: return det::isTagged(e);
+    default: return false;
+  }
+}
+int petForget() {
+  const int k = det::forgetOldest(creature_rules::kPetForget);
+  const det::Counts c = det::counts();
+  creature::update(c.recent3m, c.unique24h, (uint16_t)c.droneEver, c.seenTraits);
+  return k;
+}
 void toContact(const radar::Style &s, const det::Entry &e, uint32_t now, radar::Contact &c) {
   memset(&c, 0, sizeof c);
   const int sm = det::smoothed(e);
@@ -25,11 +42,10 @@ void toContact(const radar::Style &s, const det::Entry &e, uint32_t now, radar::
     c.tn++;
   }
 }
-void cellName(uint8_t cell, char out[3]) {
-  out[0] = (char)('A' + cell % 10);
-  out[1] = (char)('1' + (cell / 10) % 8);
-  out[2] = 0;
-}
+// First hex digits of the salted id, so the sonar label matches the start
+// of the ID line in DEVICE DETAIL (privacy::idToStr).
+void tag2(uint32_t id, char out[3]) { snprintf(out, 3, "%02X", (unsigned)(id >> 24)); }
+void tag4(uint32_t id, char out[5]) { snprintf(out, 5, "%04X", (unsigned)(id >> 16)); }
 const char *kindName(det::Kind k) { return k == det::DRONE ? "DRONE" : k == det::BLE ? "BLE" : "WIFI"; }
 void badgeStr(uint8_t b, char *out, size_t n, bool withRandom) {
   if (!n) return;

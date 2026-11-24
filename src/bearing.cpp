@@ -8,5 +8,4 @@ uint32_t fnv1a(const uint8_t *p, int n) {
   return h;
 }
 uint16_t fromMac(const uint8_t mac[6]) { return (uint16_t)(((uint64_t)fnv1a(mac, 6) * 360u) >> 32); }
-uint8_t cellFromMac(const uint8_t mac[6]) { return (uint8_t)((fnv1a(mac, 6) >> 8) % 80u); }
 }

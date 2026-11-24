@@ -19,5 +19,8 @@
 #define CYD32_TAB_H         40
 #define CYD32_TAB_BTN_W     80
 #define CYD32_CREATURE_ZOOM 256
+/* Creature stages 1..4 (egg = stage 1): LVGL zoom of the 64 px sprite,
+   72 / 88 / 104 / 120 px. */
+static const uint16_t CYD32_STAGE_ZOOM[4] = {288, 352, 416, 480};
 #define CYD32_HOLD_HINT     "Hold BOOT 3 s: unsigned update"
 #define CYD32_UNSIGNED_BODY "BOOT button held.\n\nArm UNSIGNED update mode?\nThe next update may install firmware\nwhose origin cannot be verified.\nValid for ONE update, this boot only."

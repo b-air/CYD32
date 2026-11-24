@@ -14,5 +14,8 @@
 #define CYD32_TOUCH_MIN     48
 #define CYD32_CREATURE_NN   3
 #define CYD32_CREATURE_ZOOM 768
+/* Creature stages 1..4 (egg = stage 1): LVGL zoom of the 192 px (3x nearest
+   neighbour) buffer, 192 / 224 / 256 / 288 px. */
+static const uint16_t CYD32_STAGE_ZOOM[4] = {256, 299, 341, 384};
 #define CYD32_HOLD_HINT     "Hold KEYA 3 s: unsigned update"
 #define CYD32_UNSIGNED_BODY "KEYA held.\n\nArm UNSIGNED update mode?\nThe next update may install firmware\nwhose origin cannot be verified.\nValid for ONE update, this boot only."

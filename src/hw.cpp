@@ -7,6 +7,7 @@
 #include "ota_rollback.h"
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
+#include <esp_timer.h>
 
 namespace {
 // Pin map of the ESP32-2432S028 (single USB variant): display on HSPI, touch on its own SPI pins.
@@ -41,6 +42,14 @@ class LGFX_CYD : public lgfx::LGFX_Device {
   }
 };
 LGFX_CYD tft;
+// Proximity beep: CYD "SPEAKER" connector = GPIO26 (on-board amplifier).
+// LEDC channel 4 (timer 2): the backlight uses channel 7 (timer 3). GPIO26 is
+// only attached while the beep is ON; an esp_timer ends each tone.
+constexpr int kSpkPin = 26, kSpkCh = 4, kSpkDuty = 24;  // 8-bit duty ~9 %: moderate volume
+bool spkOn = false;
+uint32_t spkHz = 0;
+esp_timer_handle_t spkTimer = nullptr;
+void spkOff(void *) { if (spkOn) ledcWrite(kSpkCh, 0); }
 }  // namespace
 
 namespace hw {
@@ -60,6 +69,32 @@ void flush(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *px) {
   tft.pushImage(x, y, w, h, reinterpret_cast<const lgfx::rgb565_t *>(px));
 }
 bool bootButtonPressed() { return digitalRead(0) == LOW; }
+void beepPower(bool on) {
+  if (on == spkOn) return;
+  if (on) {
+    if (!spkTimer) {
+      const esp_timer_create_args_t a = {spkOff, nullptr, ESP_TIMER_TASK, "beep", false};
+      if (esp_timer_create(&a, &spkTimer) != ESP_OK) spkTimer = nullptr;
+    }
+    spkHz = 2500;
+    ledcSetup(kSpkCh, spkHz, 8);
+    ledcWrite(kSpkCh, 0);
+    ledcAttachPin(kSpkPin, kSpkCh);
+    spkOn = true;
+  } else {
+    spkOn = false;
+    if (spkTimer) esp_timer_stop(spkTimer);
+    ledcWrite(kSpkCh, 0);
+    ledcDetachPin(kSpkPin);
+    pinMode(kSpkPin, INPUT);  // released: not driven while the beep is OFF
+  }
+}
+void beepTone(uint16_t hz, uint16_t ms) {
+  if (!spkOn) return;
+  if (hz != spkHz) { spkHz = hz; ledcChangeFrequency(kSpkCh, hz, 8); }
+  ledcWrite(kSpkCh, kSpkDuty);
+  if (spkTimer) { esp_timer_stop(spkTimer); esp_timer_start_once(spkTimer, (uint64_t)ms * 1000u); }
+}
 void fatal(const char *msg) {
   BOOT_LOG("FATAL: %s. Halted.", msg);
   tft.fillScreen(0x0000);

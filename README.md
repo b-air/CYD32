@@ -26,7 +26,7 @@ v9 green phosphor radar theme: a procedural PPI scope with a 3 s clockwise
 sweep, a 40 degree trailing wedge and fading echoes; yellow is reserved for
 drones (#FCEE0A on both boards). The StopWatch boot screen shows the M5Stack
 logo; every other StopWatch screen is phosphor green on black, and the screens
-with the 4 tabs (sonar, grid) use the curved tab band. On the CYD the remaining
+with the 4 tabs (SONAR / DASH / CREA / MENU) use the curved tab band. On the CYD the remaining
 screens use the same phosphor tokens (README section 7 of the design). The
 first screen after boot is the creature (an egg that hatches, then grows with
 detections). Reference renders and host renders of the firmware are in
@@ -62,12 +62,12 @@ EXAMPLE DATA; not tested on hardware yet).
 | Feature | State |
 |---|---|
 | Boot, display, touch, tab bar | done |
-| Sonar, grid (+ easter egg A1-B2-C3-D4), details | done |
+| Sonar (7 modes: ALL / WIFI / BLE / RID / FLOCK / TRK / META), device details, proximity beep | done (modes and beep hardware untested) |
 | Passive Wi-Fi mgmt + BLE scan, hashed IDs | done |
 | Creature (4 lineages; hatches at 1 device, sizes 2/3/4 at 30/60/120 devices in the last 3 min, shrinks again; Cthulhu at 1/3/6/10/15 drones) | done |
 | About screen (licence, version, commit, source) | done |
 | Signed OTA from an iPhone, A/B slots, rollback | done |
-| Trackers / Meta / Flock badges, drone list, v0.1 dashboard (counters, lists, log, filters) | done (hardware untested) |
+| Trackers / Meta / Flock badges, dashboard (counters; WIFI / BLE / RID / TAGGED / LOG views) | done (hardware untested) |
 | Remote ID field decoding (position, operator) | phase 3 |
 | Wardriving on StopWatch (RAM-only, salted IDs, cap 1024) | done (no GPS / no export; hardware untested) |
 | M5Stack StopWatch target (round HUD, dual firmware) | done (v8 round HUD; hardware untested) |
@@ -126,7 +126,7 @@ Secure Boot and no flash encryption.
 
 ## Updating from an iPhone (OTA)
 
-1. MENU > Update > *Start update mode*. Scanning stops; a WPA2 hotspot with a
+1. MENU > OTA > *Start update mode*. Scanning stops; a WPA2 hotspot with a
    random password starts for 10 minutes and its `WIFI:` QR code is shown.
 2. Scan the QR code with the iPhone camera to join the hotspot.
 3. Open `http://192.168.4.1` in Safari and upload the **signed** `.bin` from Files.
@@ -165,12 +165,17 @@ The About screen shows the status and the fingerprint of the verifying key
 - Test on real hardware: Wi-Fi `WIFI_MODE_NULL` + promiscuous capture, BLE/Wi-Fi
   time-slicing, touch calibration, OTA end to end with rollback. The StopWatch
   target has not been run on a device yet (AMOLED colour endianness, circular
-  clip, CST820B touch including the r=213 safe circle, KEYA BACK / KEYB SELECT,
+  clip, CST820B touch including the r=213 safe circle, KEYA NEXT / KEYB SELECT,
   A+B long-press menu, KEYA unsigned-mode gesture, battery reading, creature
   x3 blit, RAM-only wardriving, OTA, scanner).
-- Batch 5 (hardware untested): A / B short and long presses, 8-entry menu,
-  sonar refresh rate and trail, shorter scanner slices, badge signatures, heap
-  use on the CYD (about 8 KB of tables moved from static RAM to the heap).
+- Batch 5 (hardware untested): A / B short and long presses, sonar refresh
+  rate and trail, shorter scanner slices, badge signatures, heap use on the CYD
+  (about 8 KB of tables moved from static RAM to the heap).
+- Batch 6 (hardware untested): StopWatch Wi-Fi start-up fix (Wi-Fi before BLE,
+  real error codes, retry every 30 s, LVGL pool and tables in PSRAM; Wi-Fi
+  status on ABOUT), 6-entry menu, sonar modes, dashboard views, proximity beep
+  (CYD: needs a small speaker on the SPEAK connector), creature PET / FEED and
+  larger sizes. GRID and TORPEDO removed.
 - Migrate `src/ota_sig.cpp` and `src/privacy.cpp` to the mbedTLS 3 API (the
   `*_ret` SHA-256 functions and direct `grp`/`Q` access go away) before moving to
   arduino-esp32 3.x / ESP-IDF 5.

@@ -26,6 +26,26 @@ class RecentWindow {
     for (int i = 0; i < used_; i++) if ((uint32_t)(now - e_[i].seen) < windowMs) n++;
     return n;
   }
+  // Creature PET: forget the n devices with the oldest last-seen time among
+  // those still inside the window (all of them when fewer than n). Entries
+  // that already left the window are dropped first: they no longer count and
+  // are not part of n. Returns how many counted devices were forgotten.
+  int evictOldest(int n, uint32_t now, uint32_t windowMs) {
+    int w = 0;
+    for (int i = 0; i < used_; i++)
+      if ((uint32_t)(now - e_[i].seen) < windowMs) e_[w++] = e_[i];
+    used_ = w;
+    if (n <= 0) return 0;
+    if (n >= used_) { const int k = used_; used_ = 0; return k; }
+    for (int k = 0; k < n; k++) {
+      int o = 0;
+      for (int i = 1; i < used_; i++)
+        if ((uint32_t)(now - e_[i].seen) > (uint32_t)(now - e_[o].seen)) o = i;
+      e_[o] = e_[--used_];
+    }
+    return n;
+  }
+  int size() const { return used_; }
   static constexpr int capacity() { return N; }
  private:
   struct E { uint32_t id, seen; };
