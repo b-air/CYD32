@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2026 CYD32 contributors
+# Security-owned paths. Changes here go through a SecOps review.
+# Note: the main ruleset requires 0 approvals (solo maintainer), so this file
+# documents ownership; the hard control is the "No .cursor/ config" step of the
+# required `gitleaks` check in ci.yml, which fails if any .cursor/ path exists.
+/.github/   @b-air
+.cursor/    @b-air
