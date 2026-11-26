@@ -124,6 +124,18 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # C9: no Cursor hooks, MCP servers or rules may enter the repo (a self-hosted
+      # Cursor worker would run them). Runs in every event, drafts included. Allowing
+      # a .cursor/ path means editing this workflow, which a token without the
+      # workflow scope cannot do.
+      - name: No .cursor/ config (C9)
+        run: |
+          found="$(git ls-files | grep -E '(^|/)\.cursor/' || true)"
+          if [ -n "$found" ]; then
+            printf '%s\n' "$found" | sed 's/^/::error::.cursor\/ path not allowed: /'
+            exit 1
+          fi
+          echo "No .cursor/ path in the tree."
       - name: gitleaks (pinned binary, checksum verified)
         env:
           GL_VER: 8.30.1
