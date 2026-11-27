@@ -180,12 +180,14 @@ sudo apt remove cyd32
 sudo apt purge cyd32   # also deletes the cyd32 user and group
 ```
 
-A new login session is needed before the session user can execute the
-helper, because `postinst` adds login accounts (UID 1000–59999) to group
-`cyd32`. That group membership is the only change beyond the reviewed
-layout (unprivileged UI, helper `0750` `root:cyd32`, `setcap` only). It is
-not a socket service and not `DynamicUser`. SecOps should re-read that
-group grant before this package is published.
+On the first install only, `postinst` adds the installing account to
+group `cyd32` when `SUDO_USER` is set and that uid is at least 1000. If
+`SUDO_USER` is empty and `pi` exists, it adds `pi`. An upgrade adds
+nobody. Otherwise it prints the `usermod` command and adds nobody. A new
+login session is needed before that account can execute the helper. That
+one-account grant is the only change beyond the reviewed layout
+(unprivileged UI, helper `0750` `root:cyd32`, `setcap` only). It is not a
+socket service and not `DynamicUser`.
 
 `packaging/cyd32-cardputer.service` is not installed. Enabling it beside
 APPLaunch would draw a second UI on the same panel.
@@ -206,10 +208,11 @@ systemctl --user start APPLaunch
 `getcap /usr/share/APPLaunch/bin/cyd32-awus-helper` should print
 `cap_net_admin,cap_net_raw=ep`. The UI binary must print nothing.
 
-`cyd32-update` downloads the newest GitHub release or pre-release `.deb`
-for this repository, checks it against `SHA256SUMS`, and installs it with
-apt. HTTPS only. A mismatch is not installed. The short French procedure
-is `docs/cardputerzero.md`.
+`cyd32-update` downloads the newest GitHub release or pre-release asset
+named `cyd32_<version>_arm64.deb`, checks it against `SHA256SUMS`, checks
+that the package control field is `cyd32`, and installs it with apt.
+HTTPS only. A mismatch is not installed. The install steps are in
+`docs/CARDPUTERZERO.md`.
 
 ## Radio and USB
 

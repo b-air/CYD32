@@ -36,7 +36,7 @@ pick_release() {
   python3 /dev/fd/3 3<<'PY'
 import json, re, sys
 tag_ok = re.compile(r"^[A-Za-z0-9._+-]+$")
-name_ok = re.compile(r"^[A-Za-z0-9._+-]+$")
+deb_ok = re.compile(r"^cyd32_[0-9][A-Za-z0-9.+~-]*_arm64\.deb$")
 prefix = "https://github.com/b-air/CYD32/releases/download/"
 
 def canonical(tag, name, url):
@@ -66,7 +66,7 @@ for rel in data:
         url = asset.get("browser_download_url") or ""
         if name == "SHA256SUMS" and canonical(tag, name, url):
             sums = url
-        elif name.endswith("_arm64.deb") and name_ok.fullmatch(name) and canonical(tag, name, url):
+        elif deb_ok.fullmatch(name) and canonical(tag, name, url):
             if deb is not None:
                 ambiguous = True
             deb = (name, url)
@@ -100,6 +100,13 @@ for raw in open(sums, "rb").read().splitlines():
 if hit is None:
     sys.exit(3)
 sys.stdout.write(hit + "\n")
+PY
+}
+
+deb_name_ok() {
+  python3 - "$1" <<'PY'
+import re, sys
+sys.exit(0 if re.fullmatch(r"cyd32_[0-9][A-Za-z0-9.+~-]*_arm64\.deb", sys.argv[1]) else 1)
 PY
 }
 
@@ -141,6 +148,19 @@ self_check() {
   allow_effective "https://release-assets.githubusercontent.com/asset?sp=r" || fail "release asset host rejected"
   allow_effective "http://release-assets.githubusercontent.com/asset" && fail "http redirect accepted"
   allow_effective "https://evil.example/asset" && fail "other host accepted"
+  deb_name_ok cyd32_0.3.1_arm64.deb || fail "versioned asset name rejected"
+  deb_name_ok cyd32_1_arm64.deb || fail "plain asset name rejected"
+  deb_name_ok other_1_arm64.deb && fail "foreign asset name accepted"
+  deb_name_ok cyd32__arm64.deb && fail "asset name without a version accepted"
+  printf '%s\n' '[{"tag_name":"v3","draft":false,"prerelease":true,"published_at":"2026-03-01T00:00:00Z","assets":[{"name":"other_1_arm64.deb","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v3/other_1_arm64.deb"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v3/SHA256SUMS"}]}]' | pick_release >"$tmp/out" && fail "foreign asset was selected"
+  evil=$(mktemp -d)
+  mkdir -p "$evil/DEBIAN"
+  chmod 0755 "$evil" "$evil/DEBIAN"
+  printf 'Package: not-cyd32\nVersion: 1\nArchitecture: all\nMaintainer: t <t@example.com>\nDescription: t\n t\n' >"$evil/DEBIAN/control"
+  chmod 0644 "$evil/DEBIAN/control"
+  dpkg-deb --root-owner-group --build "$evil" "$tmp/not-cyd32.deb" >/dev/null
+  rm -rf "$evil"
+  [ "$(dpkg-deb -f "$tmp/not-cyd32.deb" Package)" = "cyd32" ] && fail "foreign package control accepted"
   echo "cyd32-update: self-check ok"
 }
 
@@ -175,15 +195,15 @@ tag=$(sed -n '1p' "$work/choice")
 name=$(sed -n '2p' "$work/choice")
 deb_url=$(sed -n '3p' "$work/choice")
 sums_url=$(sed -n '4p' "$work/choice")
-case "$name" in
-  *[!A-Za-z0-9._+-]*|"") fail "bad package name" ;;
-esac
+deb_name_ok "$name" || fail "refusing asset name"
 
 download "$sums_url" "$work/SHA256SUMS"
 download "$deb_url" "$work/$name"
 want=$(expected_hash "$work/SHA256SUMS" "$name") || fail "SHA256SUMS has no single hash for $name"
 got=$(sha256sum "$work/$name" | awk '{print tolower($1)}')
 [ "$want" = "$got" ] || fail "SHA-256 mismatch, not installed"
+pkg=$(dpkg-deb -f "$work/$name" Package 2>/dev/null || true)
+[ "$pkg" = "cyd32" ] || fail "package control field is not cyd32"
 
 if [ "$(id -u)" -eq 0 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y "$work/$name"
