@@ -31,6 +31,9 @@ jobs:
     outputs:
       # PR: path filter or `full-ci` label. schedule/workflow_dispatch: always. push: never.
       firmware: ${{ steps.f.outputs.firmware == 'true' || steps.f.outputs.full == 'true' || contains(github.event.pull_request.labels.*.name, 'full-ci') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+      # CardputerZero port: ready PRs only (never drafts, never push to main, not the
+      # weekly schedule), or a manual run.
+      cardputerzero: ${{ steps.f.outputs.cardputerzero == 'true' || steps.f.outputs.full == 'true' || contains(github.event.pull_request.labels.*.name, 'full-ci') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -55,6 +58,11 @@ jobs:
               - "include/**"
               - "lib/**"
               - "scripts/**"
+            cardputerzero:
+              - "cardputerzero/**"
+              # Parent sources the port compiles unchanged (see cardputerzero/CMakeLists.txt).
+              - "src/**"
+              - "include/**"
 
   build-matrix:
     needs: changes
@@ -99,6 +107,28 @@ jobs:
     steps:
       - name: Require every firmware target
         run: test "${{ needs.changes.result }}" = "success" && test "${{ needs.build-matrix.result }}" = "success"
+
+  # N5 (PR #17): build the CardputerZero Linux port on the host toolchain and run its
+  # tests, including the check that privileged modes refuse --sys. UI off: no LVGL/SDL
+  # download in CI (those archives are verified by hand on the device, see README).
+  cardputerzero:
+    needs: changes
+    if: ${{ !github.event.pull_request.draft && needs.changes.outputs.cardputerzero == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build (host, UI off)
+        run: |
+          cmake -S cardputerzero -B build-cz -DCYD32_BUILD_UI=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-cz -j"$(nproc)"
+      - name: Test (cyd32-radio-test, helper checks)
+        run: ctest --test-dir build-cz --output-on-failure --no-tests=error
 
   guard:
     needs: changes
