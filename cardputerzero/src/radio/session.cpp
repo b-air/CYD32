@@ -29,11 +29,12 @@ std::string join_cmd(const Cmd &c) {
 
 std::vector<Cmd> plan_arm(const SavedLink &s) {
   const std::string &i = s.ifname;
+  // Absolute paths: confirm on the official M5 image before arming.
   return {
-      Cmd{{"nmcli", "dev", "set", i, "managed", "no"}},
-      Cmd{{"ip", "link", "set", "dev", i, "down"}},
-      Cmd{{"iw", "dev", i, "set", "type", "monitor"}},
-      Cmd{{"ip", "link", "set", "dev", i, "up"}},
+      Cmd{{"/usr/bin/nmcli", "dev", "set", i, "managed", "no"}},
+      Cmd{{"/usr/sbin/ip", "link", "set", "dev", i, "down"}},
+      Cmd{{"/usr/sbin/iw", "dev", i, "set", "type", "monitor"}},
+      Cmd{{"/usr/sbin/ip", "link", "set", "dev", i, "up"}},
   };
 }
 
@@ -41,16 +42,16 @@ std::vector<Cmd> plan_restore(const SavedLink &s) {
   const std::string &i = s.ifname;
   const std::string type = s.type.empty() ? "managed" : s.type;
   std::vector<Cmd> cmds = {
-      Cmd{{"ip", "link", "set", "dev", i, "down"}},
-      Cmd{{"iw", "dev", i, "set", "type", type}},
-      Cmd{{"ip", "link", "set", "dev", i, "up"}},
+      Cmd{{"/usr/sbin/ip", "link", "set", "dev", i, "down"}},
+      Cmd{{"/usr/sbin/iw", "dev", i, "set", "type", type}},
+      Cmd{{"/usr/sbin/ip", "link", "set", "dev", i, "up"}},
   };
-  if (s.nm_managed) cmds.push_back(Cmd{{"nmcli", "dev", "set", i, "managed", "yes"}});
+  if (s.nm_managed) cmds.push_back(Cmd{{"/usr/bin/nmcli", "dev", "set", i, "managed", "yes"}});
   return cmds;
 }
 
 Cmd plan_hop(const std::string &ifname, int mhz) {
-  return Cmd{{"iw", "dev", ifname, "set", "freq", std::to_string(mhz)}};
+  return Cmd{{"/usr/sbin/iw", "dev", ifname, "set", "freq", std::to_string(mhz)}};
 }
 
 bool Session::arm(const DetectResult &d, const SavedLink &saved, std::string &err) {

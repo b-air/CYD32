@@ -64,8 +64,9 @@ on the header. Bearing is drawn as an indicative angle and is not logged.
 
 ## Build
 
-Host UI (SDL). Point `zig` (0.14) and CMake at the wrappers, and pass the
-LVGL 9.2.2 and SDL 2.30.10 trees if the machine has no packages:
+Host UI (SDL). Point `zig` (0.14.1) and CMake at the wrappers, and pass the
+LVGL 9.2.2 and SDL 2.30.10 trees if the machine has no packages. Verify each
+archive against the SHA-256 sums in "Source archives" below before unpacking.
 
 ```sh
 cmake -S cardputerzero -B build-cz -G Ninja \
@@ -81,9 +82,9 @@ SDL_VIDEODRIVER=dummy ./build-cz/cyd32-ui --self-test
 ```
 
 With distro packages, omit the two `*_SOURCE` options. `find_package(SDL2)`
-is used and LVGL 9.2.2 is fetched.
+is used and LVGL 9.2.2 is fetched (the SHA-256 is pinned in CMakeLists.txt).
 
-aarch64 helper (static musl), from a machine with `zig` on `PATH`:
+aarch64 helper (static musl), from a machine with `zig` 0.14.1 on `PATH`:
 
 ```sh
 cmake -S cardputerzero -B build-cz-arm -G Ninja \
@@ -93,7 +94,7 @@ cmake -S cardputerzero -B build-cz-arm -G Ninja \
 cmake --build build-cz-arm --target cyd32-awus-helper cyd32-radio-test
 ```
 
-Device UI (framebuffer, no SDL):
+Device UI (framebuffer, no SDL), cross-compiled with the same musl toolchain:
 
 ```sh
 cmake -S cardputerzero -B build-cz-fb -G Ninja \
@@ -103,15 +104,75 @@ cmake -S cardputerzero -B build-cz-fb -G Ninja \
 cmake --build build-cz-fb --target cyd32-ui
 ```
 
-On the device, after copying the helper:
+On the CardputerZero itself, compile with the distro toolchain (gcc). Do not
+pass a Zig CMake toolchain file. The device has 512 MiB of RAM, so keep the
+build job count low (`-j1` or `-j2`). Binaries land in the CMake build
+directory (`build-cz-fb/` below).
 
 ```sh
-sudo setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/cyd32-awus-helper
+cmake -S cardputerzero -B build-cz-fb -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCYD32_DISPLAY=fbdev
+cmake --build build-cz-fb -j1
 ```
 
-`packaging/cyd32-cardputer.service` runs the UI as a normal user and sets
-`NoNewPrivileges=false` so those file capabilities still apply. Do not run
-the UI as root.
+Radio tests without the UI (no LVGL download). This is also the command CI
+runs on a ready pull request:
+
+```sh
+cmake -S cardputerzero -B build-cz -DCYD32_BUILD_UI=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-cz -j4
+ctest --test-dir build-cz --output-on-failure --no-tests=error
+```
+
+On the device, prefer `-j1` for that build too.
+
+## Source archives
+
+SHA-256 sums were computed from the official downloads (not invented). Check
+`sha256sum -c` before unpacking, or let CMake check LVGL via `URL_HASH`.
+
+| Artifact | Official URL | SHA-256 |
+| --- | --- | --- |
+| LVGL 9.2.2 | https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.tar.gz | `129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f` |
+| SDL 2.30.10 | https://github.com/libsdl-org/SDL/releases/download/release-2.30.10/SDL2-2.30.10.tar.gz and https://libsdl.org/release/SDL2-2.30.10.tar.gz | `f59adf36a0fcf4c94198e7d3d776c1b3824211ab7aeebeb31fe19836661196aa` |
+| Zig 0.14.1 (x86_64 Linux) | https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz | `24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c` |
+| Zig 0.14.1 (aarch64 Linux) | https://ziglang.org/download/0.14.1/zig-aarch64-linux-0.14.1.tar.xz | `f7a654acc967864f7a050ddacfaa778c7504a0eca8d2b678839c21eea47c992b` |
+
+```sh
+echo "129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f  v9.2.2.tar.gz" | sha256sum -c
+```
+
+## Install on the device
+
+Create a system user `cyd32` with no login shell. Install the helper as
+`root:cyd32` mode `0750`, then apply file capabilities. `chown` and `chmod`
+must run before `setcap`. Do not set the setuid bit. Do not run the UI as
+root. `packaging/cyd32-cardputer.service` starts the UI as `cyd32` with
+`NoNewPrivileges=false` so those file capabilities still apply.
+
+The helper execs only `/usr/sbin/ip`, `/usr/sbin/iw` and `/usr/bin/nmcli`
+(confirm these paths on the official M5 image). It raises `CAP_NET_ADMIN` in
+the ambient set for `ip` and `iw` only, just before `execve`. With `+ep` and
+no ambient capability, arm would fail.
+
+```sh
+sudo groupadd --system cyd32
+sudo useradd --system --gid cyd32 --home-dir /nonexistent --shell /usr/sbin/nologin cyd32
+# Confirm the shell path if /usr/sbin/nologin is absent.
+
+sudo install -o root -g root -m 0755 build-cz-fb/cyd32-ui /usr/local/bin/cyd32-ui
+sudo install -o root -g cyd32 -m 0750 build-cz-fb/cyd32-awus-helper /usr/local/bin/cyd32-awus-helper
+sudo chown root:cyd32 /usr/local/bin/cyd32-awus-helper
+sudo chmod 0750 /usr/local/bin/cyd32-awus-helper
+sudo setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/cyd32-awus-helper
+getcap /usr/local/bin/cyd32-awus-helper
+```
+
+`getcap` should print `cap_net_admin,cap_net_raw=ep` on the helper only.
+The UI binary must have no file capabilities. For an interactive test, add
+your login user to group `cyd32` (then start a new session) and pass
+`--helper /usr/local/bin/cyd32-awus-helper`, or run the systemd unit.
 
 ## Radio and USB
 

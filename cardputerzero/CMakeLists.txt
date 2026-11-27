@@ -61,8 +61,13 @@ add_executable(cyd32-radio-test src/test_radio.cpp)
 target_link_libraries(cyd32-radio-test PRIVATE cyd32-radio)
 
 enable_testing()
+# Local (and CI on a ready PR):
+#   cmake -S cardputerzero -B build-cz -DCYD32_BUILD_UI=OFF -DCMAKE_BUILD_TYPE=Release
+#   cmake --build build-cz -j4
+#   ctest --test-dir build-cz --output-on-failure --no-tests=error
 add_test(NAME radio COMMAND cyd32-radio-test)
 add_test(NAME radio-helper COMMAND cyd32-radio-test --helper $<TARGET_FILE:cyd32-awus-helper>)
+add_test(NAME helper-sys-refused COMMAND cyd32-radio-test --sys-refused $<TARGET_FILE:cyd32-awus-helper>)
 
 if(CYD32_BUILD_UI)
   if(CYD32_DISPLAY STREQUAL "fbdev")
@@ -102,7 +107,10 @@ if(CYD32_BUILD_UI)
     add_subdirectory("${CYD32_LVGL_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/lvgl" EXCLUDE_FROM_ALL)
   else()
     include(FetchContent)
-    FetchContent_Declare(lvgl URL https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.tar.gz)
+    FetchContent_Declare(lvgl
+      URL https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.tar.gz
+      URL_HASH SHA256=129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(lvgl)
   endif()
   if(CYD32_LV_SDL)

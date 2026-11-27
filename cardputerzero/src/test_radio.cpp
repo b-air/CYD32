@@ -135,7 +135,7 @@ static void test_detect(const fs::path &sys) {
 
 static bool only_tools(const std::vector<std::string> &argv) {
   if (argv.empty()) return false;
-  if (argv[0] != "nmcli" && argv[0] != "ip" && argv[0] != "iw") return false;
+  if (argv[0] != "/usr/bin/nmcli" && argv[0] != "/usr/sbin/ip" && argv[0] != "/usr/sbin/iw") return false;
   for (const auto &a : argv)
     if (a.find("kill") != std::string::npos) return false;
   return true;
@@ -147,12 +147,12 @@ static void test_arm() {
   cz::SavedLink s{"wlan1", "managed", true};
   const auto arm = cz::plan_arm(s);
   CHECK(arm.size() == 4);
-  CHECK(arm[0].argv[0] == "nmcli" && arm[0].argv[5] == "no");
-  CHECK(arm[2].argv[0] == "iw" && arm[2].argv[5] == "monitor");
+  CHECK(arm[0].argv[0] == "/usr/bin/nmcli" && arm[0].argv[5] == "no");
+  CHECK(arm[2].argv[0] == "/usr/sbin/iw" && arm[2].argv[5] == "monitor");
   const auto back = cz::plan_restore(s);
   CHECK(back.size() == 4);
   CHECK(back[1].argv[5] == "managed");
-  CHECK(back[3].argv[0] == "nmcli" && back[3].argv[5] == "yes");
+  CHECK(back[3].argv[0] == "/usr/bin/nmcli" && back[3].argv[5] == "yes");
   for (const auto &c : arm) CHECK(only_tools(c.argv));
   for (const auto &c : back) CHECK(only_tools(c.argv));
 
@@ -166,7 +166,7 @@ static void test_arm() {
   CHECK(session.armed());
   CHECK(ok.ran.size() == 4);
   CHECK(session.hop(2412, err));
-  CHECK(ok.ran.back()[0] == "iw");
+  CHECK(ok.ran.back()[0] == "/usr/sbin/iw");
   CHECK(ok.ran.back()[5] == "2412");
   CHECK(session.restore(err));
   CHECK(!session.armed());
@@ -182,7 +182,7 @@ static void test_arm() {
   CHECK(bad.ran[4][5] == "managed");  // restore sets the original type
   bool nm_yes = false;
   for (const auto &c : bad.ran)
-    if (!c.empty() && c[0] == "nmcli" && c.back() == "yes") nm_yes = true;
+    if (!c.empty() && c[0] == "/usr/bin/nmcli" && c.back() == "yes") nm_yes = true;
   CHECK(nm_yes);
 }
 
@@ -322,17 +322,41 @@ static int spawn(const std::string &bin, const std::vector<std::string> &args, s
   return WIFEXITED(st) ? WEXITSTATUS(st) : 127;
 }
 
-static void test_helper(const std::string &bin, const fs::path &sys) {
+static void test_helper(const std::string &bin) {
   std::string out;
   CHECK(spawn(bin, {"dry-arm", "--if", "wlan1", "--type", "managed", "--nm", "yes"}, out) == 0);
-  CHECK(out.find("nmcli dev set wlan1 managed no") != std::string::npos);
-  CHECK(out.find("iw dev wlan1 set type monitor") != std::string::npos);
-  CHECK(out.find("iw dev wlan1 set type managed") != std::string::npos);
-  CHECK(out.find("nmcli dev set wlan1 managed yes") != std::string::npos);
+  CHECK(out.find("/usr/bin/nmcli dev set wlan1 managed no") != std::string::npos);
+  CHECK(out.find("/usr/sbin/iw dev wlan1 set type monitor") != std::string::npos);
+  CHECK(out.find("/usr/sbin/iw dev wlan1 set type managed") != std::string::npos);
+  CHECK(out.find("/usr/bin/nmcli dev set wlan1 managed yes") != std::string::npos);
   CHECK(out.find("kill") == std::string::npos);
-  CHECK(spawn(bin, {"detect", "--sys", sys.string()}, out) == 0);
-  CHECK(out.find("chosen wlan1") != std::string::npos);
-  CHECK(out.find("reason=internal") != std::string::npos);
+}
+
+static void test_sys_refused(const std::string &bin) {
+  const fs::path fake = fs::temp_directory_path() / "cyd32-sys-must-not-be-read";
+  make_sys(fake);
+  const std::string path = fake.string();
+  std::string out;
+  const char *cmds[][2] = {
+      {"detect", nullptr},
+      {"arm", "wlan1"},
+      {"restore", "wlan1"},
+      {"hop", "wlan1"},
+      {"serve", nullptr},
+  };
+  for (const auto &c : cmds) {
+    std::vector<std::string> args = {c[0], "--sys", path};
+    if (c[1]) {
+      args = {c[0], "--if", c[1], "--sys", path};
+      if (std::string(c[0]) == "hop") {
+        args = {c[0], "--if", c[1], "--mhz", "2412", "--sys", path};
+      }
+    }
+    const int rc = spawn(bin, args, out);
+    CHECK(rc != 0);
+    CHECK(out.find("--sys is not accepted in privileged mode") != std::string::npos);
+    CHECK(out.find("chosen wlan1") == std::string::npos);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -344,10 +368,13 @@ int main(int argc, char **argv) {
   test_frames();
   test_ble();
   test_hops();
-  std::string helper;
-  for (int i = 1; i + 1 < argc; i++)
+  std::string helper, sys_refused;
+  for (int i = 1; i + 1 < argc; i++) {
     if (std::string(argv[i]) == "--helper") helper = argv[i + 1];
-  if (!helper.empty()) test_helper(helper, sys);
+    if (std::string(argv[i]) == "--sys-refused") sys_refused = argv[i + 1];
+  }
+  if (!helper.empty()) test_helper(helper);
+  if (!sys_refused.empty()) test_sys_refused(sys_refused);
   std::cout << (fails ? "FAIL" : "OK") << " " << checks << " checks, " << fails << " failed\n";
   return fails ? 1 : 0;
 }

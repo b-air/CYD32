@@ -55,4 +55,11 @@ int open_passive_hci(const std::string &hci_name, std::string &err) {
   err.clear();
   return fd;
 }
+
+void close_passive_hci(int fd) {
+  if (fd < 0) return;
+  const HciCmd off = le_set_scan_enable(false);
+  (void)write(fd, off.bytes, off.len);
+  close(fd);
+}
 }  // namespace cz

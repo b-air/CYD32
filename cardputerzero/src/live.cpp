@@ -87,6 +87,8 @@ bool transact(const std::string &cmd, std::string &reply, int timeout_ms) {
 }  // namespace
 
 bool live_start(const std::string &helper, const std::string &sysfs, std::string &err) {
+  (void)sysfs;  // helper privileged modes are hard-coded to /sys
+
   int in[2], out[2];
   if (pipe(in) != 0 || pipe(out) != 0) { err = "pipe"; status = err; return false; }
   child = fork();
@@ -95,7 +97,7 @@ bool live_start(const std::string &helper, const std::string &sysfs, std::string
     dup2(in[0], 0);
     dup2(out[1], 1);
     close(in[0]); close(in[1]); close(out[0]); close(out[1]);
-    execl(helper.c_str(), helper.c_str(), "serve", "--sys", sysfs.c_str(), (char *)nullptr);
+    execl(helper.c_str(), helper.c_str(), "serve", (char *)nullptr);
     _exit(127);
   }
   close(in[0]);

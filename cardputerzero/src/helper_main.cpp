@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2026 CYD32 contributors
 // Privileged helper (CAP_NET_ADMIN, CAP_NET_RAW). The UI does not run as root.
 // Commands: detect, dry-arm, dry-restore, arm, restore, hop, serve.
+// Privileged modes always read real /sys. --sys is refused here; only
+// cyd32-radio-test and the unprivileged UI --dry-run may point at a fake tree.
 #include "radio.hpp"
 #include "exec_posix.hpp"
 #include "capture.hpp"
@@ -17,18 +19,30 @@
 #include <memory>
 #include <vector>
 namespace {
+constexpr const char *kSys = "/sys";
 volatile sig_atomic_t g_stop = 0;
 void on_sig(int) { g_stop = 1; }
 
 void usage() {
   std::cerr <<
-      "cyd32-awus-helper detect [--sys PATH]\n"
+      "cyd32-awus-helper detect\n"
       "cyd32-awus-helper dry-arm --if NAME --type TYPE --nm yes|no\n"
       "cyd32-awus-helper dry-restore --if NAME --type TYPE --nm yes|no\n"
-      "cyd32-awus-helper arm --if NAME [--sys PATH]\n"
+      "cyd32-awus-helper arm --if NAME\n"
       "cyd32-awus-helper restore --if NAME --type TYPE --nm yes|no\n"
       "cyd32-awus-helper hop --if NAME --mhz N\n"
-      "cyd32-awus-helper serve [--sys PATH]\n";
+      "cyd32-awus-helper serve\n";
+}
+
+bool has_flag(int argc, char **argv, const char *key) {
+  for (int i = 1; i < argc; i++)
+    if (std::string(argv[i]) == key) return true;
+  return false;
+}
+
+int refuse_sys_flag() {
+  std::cerr << "cyd32-awus-helper: --sys is not accepted in privileged mode\n";
+  return 2;
 }
 
 std::string arg(int argc, char **argv, const std::string &key, const std::string &def = "") {
@@ -61,8 +75,8 @@ std::string hex_of(const uint8_t *p, size_t n) {
   return s;
 }
 
-int cmd_detect(int argc, char **argv) {
-  const auto d = cz::detect_ifaces(arg(argc, argv, "--sys", "/sys"));
+int cmd_detect() {
+  const auto d = cz::detect_ifaces(kSys);
   for (const auto &iface : d.ifaces) {
     std::cout << (iface.internal ? "skip " : "see ") << iface.name
               << " driver=" << (iface.driver.empty() ? "-" : iface.driver)
@@ -77,7 +91,13 @@ int cmd_detect(int argc, char **argv) {
   return d.chosen.empty() ? 1 : 0;
 }
 
-int serve(const std::string &sys_root) {
+int allow_iface(const std::string &ifname, std::string &why) {
+  const auto d = cz::detect_ifaces(kSys);
+  if (!cz::arm_allowed(d, ifname, why)) return 1;
+  return 0;
+}
+
+int serve() {
   std::unique_ptr<cz::Exec> ex(cz::new_posix_exec());
   cz::Session session(*ex);
   signal(SIGINT, on_sig);
@@ -87,11 +107,12 @@ int serve(const std::string &sys_root) {
   int pfd = -1, bfd = -1;
   auto restore_now = [&]() {
     if (pfd >= 0) { close(pfd); pfd = -1; }
-    if (bfd >= 0) { close(bfd); bfd = -1; }
+    if (bfd >= 0) { cz::close_passive_hci(bfd); bfd = -1; }
     if (session.armed()) {
       std::string err;
       if (!session.restore(err)) std::cerr << "restore: " << err << "\n";
     }
+    armed_if.clear();
   };
   while (!g_stop) {
     pollfd fds[3];
@@ -117,7 +138,7 @@ int serve(const std::string &sys_root) {
         if (!cmd.empty() && cmd.back() == '\r') cmd.pop_back();
         if (cmd == "QUIT" || cmd.empty()) { restore_now(); std::cout << "BYE\n" << std::flush; return 0; }
         if (cmd == "DETECT") {
-          const auto d = cz::detect_ifaces(sys_root);
+          const auto d = cz::detect_ifaces(kSys);
           if (d.chosen.empty()) std::cout << "NONE " << d.note << "\n";
           else std::cout << "CHOSEN " << d.chosen << " " << d.note << "\n";
           std::cout << std::flush;
@@ -126,12 +147,21 @@ int serve(const std::string &sys_root) {
           s.ifname = cmd.substr(4);
           s.type = "managed";
           s.nm_managed = true;
-          const auto d = cz::detect_ifaces(sys_root);
+          const auto d = cz::detect_ifaces(kSys);
           std::string err;
-          if (!session.arm(d, s, err)) std::cout << "ERR " << err << "\n";
-          else { armed_if = s.ifname; std::cout << "OK\n"; }
+          if (!session.arm(d, s, err)) {
+            armed_if.clear();
+            std::cout << "ERR " << err << "\n";
+          } else {
+            armed_if = s.ifname;
+            std::cout << "OK\n";
+          }
           std::cout << std::flush;
         } else if (cmd == "OPEN") {
+          if (!session.armed() || armed_if.empty()) {
+            std::cout << "ERR not armed\n" << std::flush;
+            continue;
+          }
           std::string err;
           if (pfd >= 0) { std::cout << "OK\n" << std::flush; continue; }
           pfd = cz::open_rx_socket(armed_if, err);
@@ -143,16 +173,22 @@ int serve(const std::string &sys_root) {
           else std::cout << "OK " << mhz << "\n";
           std::cout << std::flush;
         } else if (cmd == "BLE") {
+          if (!session.armed() || armed_if.empty()) {
+            std::cout << "ERR not armed\n" << std::flush;
+            continue;
+          }
           std::string err;
-          const std::string hci = cz::find_internal_hci(sys_root);
+          const std::string hci = cz::find_internal_hci(kSys);
           if (hci.empty()) std::cout << "ERR no internal hci\n";
           else {
+            if (bfd >= 0) { cz::close_passive_hci(bfd); bfd = -1; }
             bfd = cz::open_passive_hci(hci, err);
             std::cout << (bfd < 0 ? "ERR " + err : "OK " + hci) << "\n";
           }
           std::cout << std::flush;
         } else if (cmd == "STOP") {
           if (pfd >= 0) { close(pfd); pfd = -1; }
+          if (bfd >= 0) { cz::close_passive_hci(bfd); bfd = -1; }
           std::cout << "OK\n" << std::flush;
         } else if (cmd == "RESTORE") {
           restore_now();
@@ -189,7 +225,10 @@ int serve(const std::string &sys_root) {
 int main(int argc, char **argv) {
   if (argc < 2) { usage(); return 2; }
   const std::string cmd = argv[1];
-  if (cmd == "detect") return cmd_detect(argc, argv);
+  if (cmd == "detect" || cmd == "arm" || cmd == "restore" || cmd == "hop" || cmd == "serve") {
+    if (has_flag(argc, argv, "--sys")) return refuse_sys_flag();
+  }
+  if (cmd == "detect") return cmd_detect();
   if (cmd == "dry-arm" || cmd == "dry-restore") {
     const auto s = link_from_args(argc, argv);
     if (!cz::ifname_ok(s.ifname)) { std::cerr << "bad --if\n"; return 2; }
@@ -202,7 +241,7 @@ int main(int argc, char **argv) {
   if (cmd == "arm") {
     cz::SavedLink link = link_from_args(argc, argv);
     if (link.type.empty()) link.type = "managed";
-    const auto d = cz::detect_ifaces(arg(argc, argv, "--sys", "/sys"));
+    const auto d = cz::detect_ifaces(kSys);
     std::string err;
     if (!session.arm(d, link, err)) { std::cerr << err << "\n"; return 1; }
     std::cout << "armed " << link.ifname << "\n";
@@ -210,9 +249,8 @@ int main(int argc, char **argv) {
   }
   if (cmd == "restore") {
     const auto s = link_from_args(argc, argv);
-    // Restore does not require a prior arm in this process: replay the plan.
-    std::string err;
-    // Use a one-shot by arming the saved fields through plan only.
+    std::string why;
+    if (allow_iface(s.ifname, why) != 0) { std::cerr << why << "\n"; return 1; }
     std::unique_ptr<cz::Exec> live(cz::new_posix_exec());
     for (const auto &c : cz::plan_restore(s)) {
       std::string out, e;
@@ -223,6 +261,8 @@ int main(int argc, char **argv) {
   }
   if (cmd == "hop") {
     const auto s = link_from_args(argc, argv);
+    std::string why;
+    if (allow_iface(s.ifname, why) != 0) { std::cerr << why << "\n"; return 1; }
     const int mhz = std::atoi(arg(argc, argv, "--mhz", "0").c_str());
     std::string out, e;
     const auto c = cz::plan_hop(s.ifname, mhz);
@@ -230,7 +270,7 @@ int main(int argc, char **argv) {
     std::cout << "hop " << mhz << "\n";
     return 0;
   }
-  if (cmd == "serve") return serve(arg(argc, argv, "--sys", "/sys"));
+  if (cmd == "serve") return serve();
   usage();
   return 2;
 }
