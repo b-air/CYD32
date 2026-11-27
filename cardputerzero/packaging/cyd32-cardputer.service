@@ -1,0 +1,14 @@
+[Unit]
+Description=CYD32 sonar (CardputerZero)
+After=network.target
+
+[Service]
+# The UI stays unprivileged. The helper binary carries CAP_NET_ADMIN and
+# CAP_NET_RAW, which a service with NoNewPrivileges cannot pass on.
+NoNewPrivileges=false
+User=cyd32
+ExecStart=/usr/local/bin/cyd32-ui --awus
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
