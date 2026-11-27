@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# SecOps B1: the UI stays unprivileged. The helper is root:cyd32 mode 0750
+# and receives only cap_net_admin,cap_net_raw. Login accounts are added to
+# group cyd32 so the session user APPLaunch runs as can execute that helper.
+# That group grant is the only privilege change beyond the reviewed B1
+# file layout. There is no setuid bit, no socket, and no system service.
+set -e
+if ! getent group cyd32 >/dev/null 2>&1; then
+  groupadd --system cyd32
+fi
+if ! getent passwd cyd32 >/dev/null 2>&1; then
+  useradd --system --gid cyd32 --home-dir /nonexistent --shell /usr/sbin/nologin cyd32
+fi
+helper=/usr/share/APPLaunch/bin/cyd32-awus-helper
+chown root:cyd32 "$helper"
+chmod 0750 "$helper"
+setcap cap_net_admin,cap_net_raw+ep "$helper"
+if [ "${1:-}" = "configure" ]; then
+  getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' | while read -r user; do
+    usermod -a -G cyd32 "$user" || true
+  done
+fi
+# Replace the v0.3.0-cz-test1 copies that were installed by hand.
+rm -f /usr/local/bin/cyd32-ui /usr/local/bin/cyd32-awus-helper
+exit 0

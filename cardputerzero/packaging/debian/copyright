@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: CYD32
+Source: https://github.com/b-air/CYD32
+
+Files: *
+Copyright: 2026 CYD32 contributors
+License: AGPL-3.0-only

@@ -51,7 +51,8 @@ host shims. `hw.cpp`, `scanner.cpp`, the OTA files and `ui.cpp` are not linked.
 | [ ] or M | previous / next mode |
 | B | toggle the proximity beep |
 | A | ABOUT (from DASH, A is also the last row) |
-| Q | quit (SDL). On the device, leave the service instead |
+| Q | leave the app and return to the carousel |
+| Esc on SONAR | same exit. Esc on any other screen goes back |
 
 Modes are ALL, WIFI, BLE, RID, FLOCK, TRK, META. DASH views are WIFI, BLE,
 RID, TAGGED, LOG. Wardrive is a RAM log. microSD is the system disk and is
@@ -145,34 +146,70 @@ echo "129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f  v9.2.2.t
 
 ## Install on the device
 
-Create a system user `cyd32` with no login shell. Install the helper as
-`root:cyd32` mode `0750`, then apply file capabilities. `chown` and `chmod`
-must run before `setcap`. Do not set the setuid bit. Do not run the UI as
-root. `packaging/cyd32-cardputer.service` starts the UI as `cyd32` with
-`NoNewPrivileges=false` so those file capabilities still apply.
-
-The helper execs only `/usr/sbin/ip`, `/usr/sbin/iw` and `/usr/bin/nmcli`
-(confirm these paths on the official M5 image). It raises `CAP_NET_ADMIN` in
-the ambient set for `ip` and `iw` only, just before `execve`. With `+ep` and
-no ambient capability, arm would fail.
+One package. It registers CYD32 with APPLaunch. Do not stop LightDM and do
+not stop the launcher to install or to open the app.
 
 ```sh
-sudo groupadd --system cyd32
-sudo useradd --system --gid cyd32 --home-dir /nonexistent --shell /usr/sbin/nologin cyd32
-# Confirm the shell path if /usr/sbin/nologin is absent.
-
-sudo install -o root -g root -m 0755 build-cz-fb/cyd32-ui /usr/local/bin/cyd32-ui
-sudo install -o root -g cyd32 -m 0750 build-cz-fb/cyd32-awus-helper /usr/local/bin/cyd32-awus-helper
-sudo chown root:cyd32 /usr/local/bin/cyd32-awus-helper
-sudo chmod 0750 /usr/local/bin/cyd32-awus-helper
-sudo setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/cyd32-awus-helper
-getcap /usr/local/bin/cyd32-awus-helper
+sudo apt install ./cyd32_0.3.1_arm64.deb
 ```
 
-`getcap` should print `cap_net_admin,cap_net_raw=ep` on the helper only.
-The UI binary must have no file capabilities. For an interactive test, add
-your login user to group `cyd32` (then start a new session) and pass
-`--helper /usr/local/bin/cyd32-awus-helper`, or run the systemd unit.
+`postinst` creates the system user `cyd32`, installs the helper as
+`root:cyd32` mode `0750`, then applies `cap_net_admin,cap_net_raw=ep`.
+`chown` and `chmod` run before `setcap`. There is no setuid bit. The UI at
+`/usr/share/APPLaunch/bin/cyd32-ui` has no capabilities. Copies left in
+`/usr/local/bin` by the earlier manual install are removed.
+
+The carousel watches `/usr/share/APPLaunch/applications/` and picks up the
+icon within a few seconds. If it does not:
+
+```sh
+systemctl --user restart APPLaunch
+```
+
+Open CYD32 from the carousel. `Q`, or Esc while SONAR is showing, returns
+there. A long Esc is the launcher's own exit (SIGTERM, then SIGKILL). The
+framebuffer is cleared on the way out. The keypad is opened at
+`/dev/input/cardputer-zero-internal` when that node exists, then by the
+`tca8418` name, then the official by-path node. Nothing in this process
+grabs the device. `CYD32_EVDEV` is an optional override, not a requirement.
+`APPLAUNCH_LINUX_FBDEV_DEVICE` selects the framebuffer when it is set;
+otherwise the panel is `/dev/fb0`.
+
+```sh
+sudo apt remove cyd32
+sudo apt purge cyd32   # also deletes the cyd32 user and group
+```
+
+A new login session is needed before the session user can execute the
+helper, because `postinst` adds login accounts (UID 1000–59999) to group
+`cyd32`. That group membership is the only change beyond the reviewed
+layout (unprivileged UI, helper `0750` `root:cyd32`, `setcap` only). It is
+not a socket service and not `DynamicUser`. SecOps should re-read that
+group grant before this package is published.
+
+`packaging/cyd32-cardputer.service` is not installed. Enabling it beside
+APPLaunch would draw a second UI on the same panel.
+
+The helper execs only `/usr/sbin/ip`, `/usr/sbin/iw` and `/usr/bin/nmcli`.
+It raises `CAP_NET_ADMIN` in the ambient set for `ip` and `iw` only, just
+before `execve`.
+
+For a test outside the carousel, stop only the user launcher, then start
+it again. Do not stop LightDM.
+
+```sh
+systemctl --user stop APPLaunch
+/usr/share/APPLaunch/bin/cyd32-ui --self-test; echo "code=$?"
+systemctl --user start APPLaunch
+```
+
+`getcap /usr/share/APPLaunch/bin/cyd32-awus-helper` should print
+`cap_net_admin,cap_net_raw=ep`. The UI binary must print nothing.
+
+`cyd32-update` downloads the newest GitHub release or pre-release `.deb`
+for this repository, checks it against `SHA256SUMS`, and installs it with
+apt. HTTPS only. A mismatch is not installed. The short French procedure
+is `docs/cardputerzero.md`.
 
 ## Radio and USB
 
@@ -196,8 +233,9 @@ Wi-Fi stays a NetworkManager client the whole time.
 
 This repository build does not flash a board.
 
+- The CYD32 icon is in the carousel and opens full-screen without stopping LightDM or APPLaunch.
+- The built-in keypad works with no `CYD32_EVDEV`. Q returns to the carousel. A long Esc from the launcher delivers SIGTERM and the panel is cleared.
 - 320×170 framebuffer comes up and the four tabs are readable.
-- The 46-key map matches the table above (`CYD32_EVDEV` if event0 is wrong).
 - The dongle enumerates as `mt7921u` in USB host mode.
 - Monitor turns on, a few management frames arrive, and restore returns the
   interface to managed mode, including after an error.

@@ -1,3 +1,6 @@
+# Not installed by the .deb. APPLaunch owns the LCD and the keypad.
+# Enabling this unit beside APPLaunch draws a second UI on the same
+# framebuffer. Do not stop LightDM and do not stop APPLaunch to use it.
 [Unit]
 Description=CYD32 sonar (CardputerZero)
 After=network.target
@@ -10,7 +13,7 @@ After=network.target
 # cannot be passed on if NoNewPrivileges is true.
 NoNewPrivileges=false
 User=cyd32
-ExecStart=/usr/local/bin/cyd32-ui --awus --helper /usr/local/bin/cyd32-awus-helper
+ExecStart=/usr/share/APPLaunch/bin/cyd32-ui --awus --helper /usr/share/APPLaunch/bin/cyd32-awus-helper
 Restart=on-failure
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 ProtectSystem=strict

@@ -1,0 +1,12 @@
+Package: cyd32
+Version: 0.3.1
+Section: utils
+Priority: optional
+Architecture: arm64
+Maintainer: CYD32 contributors <777082+b-air@users.noreply.github.com>
+Depends: iproute2, iw, network-manager, libcap2-bin, curl, ca-certificates, python3
+Recommends: usbutils, bluez, firmware-mediatek
+Description: CYD32 receive-only sonar for the CardputerZero carousel
+ APPLaunch application. The UI has no capabilities. A separate helper
+ is installed mode 0750, owner root:cyd32, with CAP_NET_ADMIN and
+ CAP_NET_RAW only. Q, or Esc on the sonar, returns to the carousel.

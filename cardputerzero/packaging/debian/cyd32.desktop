@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=CYD32
+Exec=/usr/share/APPLaunch/bin/cyd32-ui --awus
+Terminal=false
+Sysplause=true
+Icon=share/images/cyd32.png
+Type=Application

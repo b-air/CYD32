@@ -85,7 +85,7 @@ void header_text() {
   if (!header) return;
   char b[96];
   const char *radio = sim ? "SIM" : live_status();
-  snprintf(b, sizeof b, "%s %s%s %s", page == PG_SONAR ? det::catName(mode) : page == PG_DASH ? uic::kViewTxt[view] : "CYD32",
+  snprintf(b, sizeof b, "%s %s%s %s  Q", page == PG_SONAR ? det::catName(mode) : page == PG_DASH ? uic::kViewTxt[view] : "CYD32",
            beep_on ? "BEEP" : "mute", (beep_on && (int32_t)(millis() - flash_until) < 0) ? "*" : "", radio);
   lv_label_set_text(header, b);
 }
@@ -254,8 +254,8 @@ void fill_body(lv_obj_t *s) {
     return;
   }
   if (page == PG_ABOUT) {
-    char b[240];
-    snprintf(b, sizeof b, "CYD32 %s\n%s\nAGPL-3.0-only\ngithub.com/b-air/CYD32\n%s\ninternal Wi-Fi stays managed\nRX only, no probe, no connect",
+    char b[320];
+    snprintf(b, sizeof b, "CYD32 %s\n%s\nAGPL-3.0-only\ngithub.com/b-air/CYD32\n%s\ninternal Wi-Fi stays managed\nRX only, no probe, no connect\nQ returns to the carousel",
              CYD32_CZ_VERSION, CYD32_CZ_COMMIT, sim ? "radio SIM" : live_status());
     lab(s, b, 6, y0, &lv_font_unscii_8, CYD32_COL_WHITE);
     return;
@@ -348,7 +348,12 @@ void on_act(int act) {
     return;
   }
   if (act == CZ_ABOUT) { back = page; open_page(PG_ABOUT); return; }
-  if (act == CZ_BACK) { open_page(page == PG_SONAR ? PG_SONAR : back == page ? PG_SONAR : back); if (page != PG_SONAR) back = PG_SONAR; return; }
+  if (act == CZ_BACK) {
+    if (page == PG_SONAR) { quit = true; return; }
+    open_page(back == page ? PG_SONAR : back);
+    if (page != PG_SONAR) back = PG_SONAR;
+    return;
+  }
   if (act == CZ_MODE_NEXT || act == CZ_MODE_PREV) {
     const int step = act == CZ_MODE_NEXT ? 1 : -1;
     if (page == PG_DASH) view = (uic::View)(((int)view + step + uic::V_COUNT) % uic::V_COUNT);
@@ -382,6 +387,8 @@ int run_ui(const CzOpts &o) {
   det::setSonarCat(det::CAT_ALL);
   if (!sim) {
     std::string helper = o.helper ? o.helper : "";
+    if (helper.empty() && access("/usr/share/APPLaunch/bin/cyd32-awus-helper", X_OK) == 0)
+      helper = "/usr/share/APPLaunch/bin/cyd32-awus-helper";
     if (helper.empty()) {
       char exe[4096];
       const ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
