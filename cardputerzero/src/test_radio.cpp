@@ -359,6 +359,68 @@ static void test_sys_refused(const std::string &bin) {
   }
 }
 
+static int spawn_serve(const std::string &bin, const std::string &input, std::string &out) {
+  int in[2], outp[2];
+  if (pipe(in) != 0 || pipe(outp) != 0) return 127;
+  const pid_t pid = fork();
+  if (pid == 0) {
+    dup2(in[0], 0);
+    dup2(outp[1], 1);
+    dup2(outp[1], 2);
+    close(in[0]); close(in[1]); close(outp[0]); close(outp[1]);
+    execl(bin.c_str(), bin.c_str(), "serve", (char *)nullptr);
+    _exit(127);
+  }
+  close(in[0]);
+  close(outp[1]);
+  if (!input.empty()) (void)write(in[1], input.data(), input.size());
+  close(in[1]);
+  char buf[256];
+  out.clear();
+  while (true) {
+    const ssize_t n = read(outp[0], buf, sizeof buf);
+    if (n <= 0) break;
+    out.append(buf, buf + n);
+  }
+  close(outp[0]);
+  int st = 0;
+  waitpid(pid, &st, 0);
+  return WIFEXITED(st) ? WEXITSTATUS(st) : 127;
+}
+
+// N1: privileged restore --type accepts only "managed", before any exec.
+static void test_restore_type(const std::string &bin) {
+  std::string out;
+  CHECK(spawn(bin, {"restore", "--if", "wlan1", "--type", "monitor"}, out) == 2);
+  CHECK(out.find("--type accepts only managed") != std::string::npos);
+  CHECK(spawn(bin, {"restore", "--if", "wlan1", "--type", "ap"}, out) == 2);
+  CHECK(out.find("--type accepts only managed") != std::string::npos);
+  // "managed" is accepted; without a dongle, allow_iface fails after the check (not exit 2).
+  const int rc = spawn(bin, {"restore", "--if", "wlan1", "--type", "managed"}, out);
+  CHECK(rc != 2);
+  CHECK(out.find("--type accepts only managed") == std::string::npos);
+}
+
+// N2: hop --mhz and serve HOP refuse frequencies outside the three bands.
+static void test_hop_freq(const std::string &bin) {
+  std::string out;
+  const int bad[] = {0, 2411, 2485, 4999, 5925, 5954, 7116, 10000};
+  for (int mhz : bad) {
+    CHECK(spawn(bin, {"hop", "--if", "wlan1", "--mhz", std::to_string(mhz)}, out) == 2);
+    CHECK(out.find("--mhz is not an allowed frequency") != std::string::npos);
+  }
+  const int ok[] = {2412, 2484, 5000, 5924, 5955, 7115};
+  for (int mhz : ok) {
+    const int rc = spawn(bin, {"hop", "--if", "wlan1", "--mhz", std::to_string(mhz)}, out);
+    CHECK(rc != 2);
+    CHECK(out.find("--mhz is not an allowed frequency") == std::string::npos);
+  }
+  CHECK(spawn_serve(bin, "HOP 2411\nHOP 5925\nHOP 7116\nHOP 2412\nQUIT\n", out) == 0);
+  CHECK(out.find("ERR bad freq") != std::string::npos);
+  // 2412 is in-band; without ARM, serve must not call it a bad frequency.
+  CHECK(out.find("ERR not armed") != std::string::npos);
+}
+
 int main(int argc, char **argv) {
   const fs::path sys = fs::temp_directory_path() / "cyd32-awus-sys";
   make_sys(sys);
@@ -368,13 +430,17 @@ int main(int argc, char **argv) {
   test_frames();
   test_ble();
   test_hops();
-  std::string helper, sys_refused;
+  std::string helper, sys_refused, restore_type, hop_freq;
   for (int i = 1; i + 1 < argc; i++) {
     if (std::string(argv[i]) == "--helper") helper = argv[i + 1];
     if (std::string(argv[i]) == "--sys-refused") sys_refused = argv[i + 1];
+    if (std::string(argv[i]) == "--restore-type") restore_type = argv[i + 1];
+    if (std::string(argv[i]) == "--hop-freq") hop_freq = argv[i + 1];
   }
   if (!helper.empty()) test_helper(helper);
   if (!sys_refused.empty()) test_sys_refused(sys_refused);
+  if (!restore_type.empty()) test_restore_type(restore_type);
+  if (!hop_freq.empty()) test_hop_freq(hop_freq);
   std::cout << (fails ? "FAIL" : "OK") << " " << checks << " checks, " << fails << " failed\n";
   return fails ? 1 : 0;
 }

@@ -45,6 +45,14 @@ int refuse_sys_flag() {
   return 2;
 }
 
+// N2: 2.4 GHz, 5 GHz, and the 6 GHz subset used by the hop table.
+bool freq_ok(int mhz) {
+  if (mhz >= 2412 && mhz <= 2484) return true;
+  if (mhz >= 5000 && mhz <= 5924) return true;
+  if (mhz >= 5955 && mhz <= 7115) return true;
+  return false;
+}
+
 std::string arg(int argc, char **argv, const std::string &key, const std::string &def = "") {
   for (int i = 1; i + 1 < argc; i++)
     if (key == argv[i]) return argv[i + 1];
@@ -125,7 +133,6 @@ int serve() {
       if (errno == EINTR) continue;
       break;
     }
-    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
     if (fds[0].revents & POLLIN) {
       char buf[512];
       const ssize_t n = read(0, buf, sizeof buf);
@@ -169,7 +176,8 @@ int serve() {
         } else if (cmd.compare(0, 4, "HOP ") == 0) {
           std::string err;
           const int mhz = std::atoi(cmd.c_str() + 4);
-          if (!session.hop(mhz, err)) std::cout << "ERR " << err << "\n";
+          if (!freq_ok(mhz)) std::cout << "ERR bad freq\n";
+          else if (!session.hop(mhz, err)) std::cout << "ERR " << err << "\n";
           else std::cout << "OK " << mhz << "\n";
           std::cout << std::flush;
         } else if (cmd == "BLE") {
@@ -198,6 +206,7 @@ int serve() {
         }
       }
     }
+    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
     auto read_sock = [&](int &fd, int slot, bool wifi) {
       if (fd < 0 || slot >= nfd || !(fds[slot].revents & POLLIN)) return;
       uint8_t buf[2048];
@@ -249,6 +258,10 @@ int main(int argc, char **argv) {
   }
   if (cmd == "restore") {
     const auto s = link_from_args(argc, argv);
+    if (s.type != "managed") {
+      std::cerr << "cyd32-awus-helper: --type accepts only managed\n";
+      return 2;
+    }
     std::string why;
     if (allow_iface(s.ifname, why) != 0) { std::cerr << why << "\n"; return 1; }
     std::unique_ptr<cz::Exec> live(cz::new_posix_exec());
@@ -261,9 +274,13 @@ int main(int argc, char **argv) {
   }
   if (cmd == "hop") {
     const auto s = link_from_args(argc, argv);
+    const int mhz = std::atoi(arg(argc, argv, "--mhz", "0").c_str());
+    if (!freq_ok(mhz)) {
+      std::cerr << "cyd32-awus-helper: --mhz is not an allowed frequency\n";
+      return 2;
+    }
     std::string why;
     if (allow_iface(s.ifname, why) != 0) { std::cerr << why << "\n"; return 1; }
-    const int mhz = std::atoi(arg(argc, argv, "--mhz", "0").c_str());
     std::string out, e;
     const auto c = cz::plan_hop(s.ifname, mhz);
     if (ex->run(c.argv, out, e) != 0) { std::cerr << e << "\n"; return 1; }
