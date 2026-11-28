@@ -1,0 +1,3 @@
+#!/bin/sh
+# Host compiler wrapper. `zig` must be on PATH (Zig 0.14).
+exec zig cc "$@"

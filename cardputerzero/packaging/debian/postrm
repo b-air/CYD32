@@ -1,0 +1,13 @@
+#!/bin/sh
+# The system account is removed only on purge. remove keeps it so a
+# reinstall does not have to recreate the group mid-session.
+set -e
+if [ "${1:-}" = "purge" ]; then
+  if getent passwd cyd32 >/dev/null 2>&1; then
+    userdel cyd32 || true
+  fi
+  if getent group cyd32 >/dev/null 2>&1; then
+    groupdel cyd32 || true
+  fi
+fi
+exit 0

@@ -1,0 +1,214 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Download the newest public GitHub release or pre-release .deb of b-air/CYD32,
+# check SHA-256 against SHA256SUMS, then install it. HTTPS only. No token.
+set -eu
+umask 077
+
+fail() {
+  echo "cyd32-update: $*" >&2
+  exit 1
+}
+
+allow_effective() {
+  python3 - "$1" <<'PY'
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+hosts = {
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+}
+ok = (
+    u.scheme == "https"
+    and u.hostname in hosts
+    and not u.username
+    and not u.password
+)
+sys.exit(0 if ok else 1)
+PY
+}
+
+pick_release() {
+  # The script is on fd 3 so a piped release list stays on stdin.
+  python3 /dev/fd/3 3<<'PY'
+import json, re, sys
+tag_ok = re.compile(r"^[A-Za-z0-9._+-]+$")
+deb_ok = re.compile(r"^cyd32_[0-9][A-Za-z0-9.+~-]*_arm64\.deb$")
+prefix = "https://github.com/b-air/CYD32/releases/download/"
+
+def canonical(tag, name, url):
+    return url == prefix + tag + "/" + name
+
+try:
+    data = json.load(sys.stdin)
+except json.JSONDecodeError:
+    sys.exit(2)
+if not isinstance(data, list):
+    sys.exit(2)
+found = []
+for rel in data:
+    if not isinstance(rel, dict) or rel.get("draft"):
+        continue
+    tag = rel.get("tag_name") or ""
+    if not tag_ok.fullmatch(tag):
+        continue
+    assets = rel.get("assets") or []
+    deb = None
+    sums = None
+    ambiguous = False
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = asset.get("name") or ""
+        url = asset.get("browser_download_url") or ""
+        if name == "SHA256SUMS" and canonical(tag, name, url):
+            sums = url
+        elif deb_ok.fullmatch(name) and canonical(tag, name, url):
+            if deb is not None:
+                ambiguous = True
+            deb = (name, url)
+    if ambiguous or deb is None or sums is None:
+        continue
+    found.append((rel.get("published_at") or "", tag, deb[0], deb[1], sums))
+if not found:
+    sys.exit(3)
+found.sort(reverse=True)
+_, tag, name, deb_url, sums_url = found[0]
+sys.stdout.write(tag + "\n" + name + "\n" + deb_url + "\n" + sums_url + "\n")
+PY
+}
+
+expected_hash() {
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+sums, name = sys.argv[1], sys.argv[2]
+pat = re.compile(r"^([0-9a-fA-F]{64}) [ *]?([^\s]+)\s*$")
+hit = None
+for raw in open(sums, "rb").read().splitlines():
+    line = raw.decode("ascii", "replace").rstrip("\r")
+    if not line or line.startswith("#"):
+        continue
+    m = pat.match(line)
+    if not m or m.group(2) != name:
+        continue
+    if hit is not None:
+        sys.exit(2)
+    hit = m.group(1).lower()
+if hit is None:
+    sys.exit(3)
+sys.stdout.write(hit + "\n")
+PY
+}
+
+deb_name_ok() {
+  python3 - "$1" <<'PY'
+import re, sys
+sys.exit(0 if re.fullmatch(r"cyd32_[0-9][A-Za-z0-9.+~-]*_arm64\.deb", sys.argv[1]) else 1)
+PY
+}
+
+download() {
+  url=$1
+  dest=$2
+  case "$url" in
+    https://github.com/b-air/CYD32/releases/download/*) ;;
+    *) fail "refusing url" ;;
+  esac
+  case "$url" in
+    *[\?\#\|\&\;\<\>\`\$]*) fail "refusing url" ;;
+  esac
+  effective=$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --fail --silent --show-error --location --max-redirs 3 \
+    --max-filesize 33554432 --retry 2 \
+    -A cyd32-update \
+    -o "$dest" -w '%{url_effective}' \
+    "$url") || fail "download failed"
+  allow_effective "$effective" || fail "redirect left the https allowlist"
+}
+
+self_check() {
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  printf '%s\n' '[{"tag_name":"v9","draft":false,"prerelease":true,"published_at":"2026-01-01T00:00:00Z","assets":[{"name":"cyd32_9_arm64.deb","browser_download_url":"http://github.com/b-air/CYD32/releases/download/v9/cyd32_9_arm64.deb"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v9/SHA256SUMS"}]}]' | pick_release >"$tmp/out" && fail "http asset was accepted"
+  printf '%s\n' '[{"tag_name":"v1","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z","assets":[{"name":"cyd32_1_arm64.deb","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v1/cyd32_1_arm64.deb"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v1/SHA256SUMS"}]},{"tag_name":"v2","draft":false,"prerelease":true,"published_at":"2026-02-01T00:00:00Z","assets":[{"name":"cyd32_2_arm64.deb","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v2/cyd32_2_arm64.deb"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v2/SHA256SUMS"}]}]' | pick_release >"$tmp/out"
+  read -r tag <"$tmp/out"
+  [ "$tag" = "v2" ] || fail "did not pick the newer pre-release"
+  printf 'not-a-hash  cyd32_2_arm64.deb\n' >"$tmp/SHA256SUMS"
+  expected_hash "$tmp/SHA256SUMS" cyd32_2_arm64.deb >/dev/null && fail "bad hash accepted"
+  printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  cyd32_2_arm64.deb\n' >"$tmp/SHA256SUMS"
+  got=$(expected_hash "$tmp/SHA256SUMS" cyd32_2_arm64.deb)
+  [ "$got" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ] || fail "good hash rejected"
+  printf 'aa  other.deb\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  cyd32_2_arm64.deb\n' >"$tmp/SHA256SUMS"
+  expected_hash "$tmp/SHA256SUMS" cyd32_2_arm64.deb >/dev/null
+  printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  cyd32_2_arm64.deb\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  cyd32_2_arm64.deb\n' >"$tmp/SHA256SUMS"
+  expected_hash "$tmp/SHA256SUMS" cyd32_2_arm64.deb >/dev/null && fail "duplicate hash accepted"
+  allow_effective "https://release-assets.githubusercontent.com/asset?sp=r" || fail "release asset host rejected"
+  allow_effective "http://release-assets.githubusercontent.com/asset" && fail "http redirect accepted"
+  allow_effective "https://evil.example/asset" && fail "other host accepted"
+  deb_name_ok cyd32_0.3.1_arm64.deb || fail "versioned asset name rejected"
+  deb_name_ok cyd32_1_arm64.deb || fail "plain asset name rejected"
+  deb_name_ok other_1_arm64.deb && fail "foreign asset name accepted"
+  deb_name_ok cyd32__arm64.deb && fail "asset name without a version accepted"
+  printf '%s\n' '[{"tag_name":"v3","draft":false,"prerelease":true,"published_at":"2026-03-01T00:00:00Z","assets":[{"name":"other_1_arm64.deb","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v3/other_1_arm64.deb"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/b-air/CYD32/releases/download/v3/SHA256SUMS"}]}]' | pick_release >"$tmp/out" && fail "foreign asset was selected"
+  evil=$(mktemp -d)
+  mkdir -p "$evil/DEBIAN"
+  chmod 0755 "$evil" "$evil/DEBIAN"
+  printf 'Package: not-cyd32\nVersion: 1\nArchitecture: all\nMaintainer: t <t@example.com>\nDescription: t\n t\n' >"$evil/DEBIAN/control"
+  chmod 0644 "$evil/DEBIAN/control"
+  dpkg-deb --root-owner-group --build "$evil" "$tmp/not-cyd32.deb" >/dev/null
+  rm -rf "$evil"
+  [ "$(dpkg-deb -f "$tmp/not-cyd32.deb" Package)" = "cyd32" ] && fail "foreign package control accepted"
+  echo "cyd32-update: self-check ok"
+}
+
+if [ "${1:-}" = "--self-check" ]; then
+  self_check
+  exit 0
+fi
+
+command -v curl >/dev/null 2>&1 || fail "curl is required"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required"
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+api=https://api.github.com/repos/b-air/CYD32/releases?per_page=30
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+  --fail --silent --show-error --location --max-redirs 3 \
+  --max-filesize 2097152 --retry 2 \
+  -A cyd32-update -H 'Accept: application/vnd.github+json' \
+  -o "$work/releases.json" -w '%{url_effective}' \
+  "$api" >"$work/api-effective" || fail "release list failed"
+python3 - "$(cat "$work/api-effective")" <<'PY' || fail "release list left https"
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+ok = u.scheme == "https" and u.hostname == "api.github.com" and not u.username and not u.password
+sys.exit(0 if ok else 1)
+PY
+
+pick_release <"$work/releases.json" >"$work/choice" || fail "no arm64 deb with SHA256SUMS"
+tag=$(sed -n '1p' "$work/choice")
+name=$(sed -n '2p' "$work/choice")
+deb_url=$(sed -n '3p' "$work/choice")
+sums_url=$(sed -n '4p' "$work/choice")
+deb_name_ok "$name" || fail "refusing asset name"
+
+download "$sums_url" "$work/SHA256SUMS"
+download "$deb_url" "$work/$name"
+want=$(expected_hash "$work/SHA256SUMS" "$name") || fail "SHA256SUMS has no single hash for $name"
+got=$(sha256sum "$work/$name" | awk '{print tolower($1)}')
+[ "$want" = "$got" ] || fail "SHA-256 mismatch, not installed"
+pkg=$(dpkg-deb -f "$work/$name" Package 2>/dev/null || true)
+[ "$pkg" = "cyd32" ] || fail "package control field is not cyd32"
+
+if [ "$(id -u)" -eq 0 ]; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$work/$name"
+else
+  DEBIAN_FRONTEND=noninteractive sudo apt-get install -y "$work/$name"
+fi
+dpkg-query -W -f '${Package} ${Version}\n' cyd32
+echo "cyd32-update: installed $tag"

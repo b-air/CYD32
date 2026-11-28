@@ -1,0 +1,5 @@
+#!/bin/sh
+# Leave LightDM and APPLaunch running. The carousel watcher drops the icon
+# after this package's files are removed.
+set -e
+exit 0

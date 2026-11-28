@@ -1,0 +1,30 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# SecOps B1: the UI stays unprivileged. The helper is root:cyd32 mode 0750
+# and receives only cap_net_admin,cap_net_raw. On the first install only,
+# the installing account (or pi) is added to group cyd32 when its uid is
+# at least 1000. An upgrade adds nobody. There is no setuid bit, no
+# socket, and no system service.
+set -e
+if ! getent group cyd32 >/dev/null 2>&1; then
+  groupadd --system cyd32
+fi
+if ! getent passwd cyd32 >/dev/null 2>&1; then
+  useradd --system --gid cyd32 --home-dir /nonexistent --shell /usr/sbin/nologin cyd32
+fi
+helper=/usr/share/APPLaunch/bin/cyd32-awus-helper
+chown root:cyd32 "$helper"
+chmod 0750 "$helper"
+setcap cap_net_admin,cap_net_raw+ep "$helper"
+if [ "${1:-}" = "configure" ] && [ -z "${2:-}" ]; then
+  u="${SUDO_USER:-}"
+  [ -z "$u" ] && getent passwd pi >/dev/null 2>&1 && u=pi
+  if [ -n "$u" ] && [ "$(id -u "$u" 2>/dev/null || echo 0)" -ge 1000 ]; then
+    usermod -a -G cyd32 "$u"
+  else
+    echo "cyd32: add the session user to group cyd32 by hand (usermod -a -G cyd32 USER)" >&2
+  fi
+fi
+# Replace the v0.3.0-cz-test1 copies that were installed by hand.
+rm -f /usr/local/bin/cyd32-ui /usr/local/bin/cyd32-awus-helper
+exit 0
