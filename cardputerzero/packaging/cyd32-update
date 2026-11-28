@@ -149,6 +149,7 @@ self_check() {
   allow_effective "http://release-assets.githubusercontent.com/asset" && fail "http redirect accepted"
   allow_effective "https://evil.example/asset" && fail "other host accepted"
   deb_name_ok cyd32_0.3.1_arm64.deb || fail "versioned asset name rejected"
+  deb_name_ok cyd32_0.3.1-2_arm64.deb || fail "debian revision asset name rejected"
   deb_name_ok cyd32_1_arm64.deb || fail "plain asset name rejected"
   deb_name_ok other_1_arm64.deb && fail "foreign asset name accepted"
   deb_name_ok cyd32__arm64.deb && fail "asset name without a version accepted"

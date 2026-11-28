@@ -1,5 +1,5 @@
 Package: cyd32
-Version: 0.3.1
+Version: 0.3.1-2
 Section: utils
 Priority: optional
 Architecture: arm64

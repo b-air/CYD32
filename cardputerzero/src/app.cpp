@@ -42,7 +42,7 @@ det::Cat mode = det::CAT_ALL;
 uic::View view = uic::V_WIFI;
 det::Entry shown{};
 bool have_shown = false;
-lv_obj_t *scr = nullptr, *header = nullptr, *radar = nullptr;
+lv_obj_t *scr = nullptr, *header = nullptr, *radar = nullptr, *side = nullptr;
 radar::Style style{};
 CzOpts opt;
 int frame_n = 0;
@@ -79,6 +79,36 @@ lv_obj_t *lab(lv_obj_t *p, const char *t, int x, int y, const lv_font_t *f, uint
   lv_obj_set_style_text_font(o, f, 0);
   lv_obj_set_style_text_color(o, C(col), 0);
   return o;
+}
+
+void short_ver(char *out, size_t n) {
+  const char *s = CYD32_CZ_VERSION;
+  if (*s == 'v' || *s == 'V') s++;
+  char body[16];
+  size_t i = 0;
+  for (; s[i] && s[i] != '-' && i < 8; i++) body[i] = s[i];
+  body[i] = 0;
+  if (!body[0]) { snprintf(out, n, "dev"); return; }
+  if (strchr(body, '.')) snprintf(out, n, "v%s", body);
+  else snprintf(out, n, "%s", body);
+}
+
+void contact_text(char *b, size_t n) {
+  snprintf(b, n, "no contact");
+  if (!have_shown) return;
+  char id[5], badges[32];
+  uic::tag4(shown.id, id);
+  uic::badgeStr(shown.badges, badges, sizeof badges, true);
+  snprintf(b, n, "%s %s\n%d dBm %s\nch %u\nangle indicative", id, uic::kindName(shown.kind),
+           det::smoothed(shown), rssi::zone(det::smoothed(shown)), shown.channel);
+  if (badges[0]) { strncat(b, "\n", n - strlen(b) - 1); strncat(b, badges, n - strlen(b) - 1); }
+}
+
+void refresh_side() {
+  if (!side) return;
+  char b[80];
+  contact_text(b, sizeof b);
+  lv_label_set_text(side, b);
 }
 
 void header_text() {
@@ -150,10 +180,11 @@ void paint_sonar() {
 void add_tabs(lv_obj_t *s) {
   const char *t[4] = {"SONAR", "DASH", "CREA", "MENU"};
   const Page pg[4] = {PG_SONAR, PG_DASH, PG_CREA, PG_MENU};
-  for (int i = 0; i < 4; i++) {
-    lv_obj_t *o = lab(s, t[i], 8 + i * 78, kH - kTabs + 2, &lv_font_montserrat_12, page == pg[i] ? CYD32_COL_AMBER : CYD32_COL_CYAN);
-    (void)o;
-  }
+  for (int i = 0; i < 4; i++)
+    lab(s, t[i], 4 + i * 64, kH - kTabs + 2, &lv_font_montserrat_12, page == pg[i] ? CYD32_COL_AMBER : CYD32_COL_CYAN);
+  char ver[16];
+  short_ver(ver, sizeof ver);
+  lab(s, ver, 268, kH - kTabs + 6, &lv_font_unscii_8, CYD32_COL_AMBER);
 }
 
 void open_page(Page p);
@@ -163,16 +194,9 @@ void fill_body(lv_obj_t *s) {
   if (page == PG_SONAR) {
     radar = radar::create(s, 0, kHead, 168, kH - kHead - kTabs, style);
     paint_sonar();
-    char b[80] = "no contact";
-    if (have_shown) {
-      char id[5], badges[32];
-      uic::tag4(shown.id, id);
-      uic::badgeStr(shown.badges, badges, sizeof badges, true);
-      snprintf(b, sizeof b, "%s %s\n%d dBm %s\nch %u\nangle indicative", id, uic::kindName(shown.kind),
-               det::smoothed(shown), rssi::zone(det::smoothed(shown)), shown.channel);
-      if (badges[0]) { strncat(b, "\n", sizeof b - strlen(b) - 1); strncat(b, badges, sizeof b - strlen(b) - 1); }
-    }
-    lab(s, b, 170, y0, &lv_font_montserrat_12, CYD32_COL_WHITE);
+    char b[80];
+    contact_text(b, sizeof b);
+    side = lab(s, b, 170, y0, &lv_font_montserrat_12, CYD32_COL_WHITE);
     return;
   }
   if (page == PG_DASH) {
@@ -273,6 +297,7 @@ void open_page(Page p) {
   feed::stop();
   if (p != page) focus = 0;
   page = p;
+  side = nullptr;
   lv_obj_t *old = scr;
   scr = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(scr, hex(CYD32_SONAR_BG_CYD_HEX), 0);
@@ -333,13 +358,15 @@ void on_select() {
   if (page == PG_CREA) crea_select();
 }
 
+void show(Page p) { if (page != p) open_page(p); }
+
 void on_act(int act) {
   if (act == CZ_QUIT) { quit = true; return; }
   if (act == CZ_BEEP) { beep_on = !beep_on; if (page == PG_MENU) open_page(PG_MENU); return; }
-  if (act == CZ_HOME || act == CZ_TAB1) { open_page(PG_SONAR); return; }
-  if (act == CZ_TAB2) { open_page(PG_DASH); return; }
-  if (act == CZ_TAB3) { open_page(PG_CREA); return; }
-  if (act == CZ_TAB4) { open_page(PG_MENU); return; }
+  if (act == CZ_HOME || act == CZ_TAB1) { show(PG_SONAR); return; }
+  if (act == CZ_TAB2) { show(PG_DASH); return; }
+  if (act == CZ_TAB3) { show(PG_CREA); return; }
+  if (act == CZ_TAB4) { show(PG_MENU); return; }
   if (act == CZ_TAB_NEXT) {
     const Page order[] = {PG_SONAR, PG_DASH, PG_CREA, PG_MENU};
     int i = 0;
@@ -364,7 +391,7 @@ void on_act(int act) {
   }
   if (act == CZ_PREV || act == CZ_NEXT) {
     const int dir = act == CZ_NEXT ? 1 : -1;
-    if (page == PG_SONAR) { move_sonar(dir); open_page(PG_SONAR); return; }
+    if (page == PG_SONAR) { move_sonar(dir); paint_sonar(); refresh_side(); return; }
     if (page == PG_CREA) { crea_focus(dir); return; }
     if (page == PG_MENU) { focus = (focus + dir + uic::kMenuN) % uic::kMenuN; open_page(PG_MENU); return; }
     if (page == PG_DASH) {

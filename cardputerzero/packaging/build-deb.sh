@@ -3,7 +3,7 @@
 # Does not install the package and does not talk to GitHub.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-ver=0.3.1
+ver=0.3.1-2
 ui=${1:-"$root/build-cz-fb/cyd32-ui"}
 helper=${2:-"$root/build-cz-fb/cyd32-awus-helper"}
 out=${3:-"$root/cardputerzero/dist/cyd32_${ver}_arm64.deb"}
