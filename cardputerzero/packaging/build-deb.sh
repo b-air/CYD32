@@ -22,8 +22,10 @@ cp "$helper" "$stage/usr/share/APPLaunch/bin/cyd32-awus-helper"
 cp "$root/cardputerzero/packaging/cyd32-update" "$stage/usr/bin/cyd32-update"
 chmod 0755 \
   "$stage/usr/share/APPLaunch/bin/cyd32-ui" \
-  "$stage/usr/share/APPLaunch/bin/cyd32-awus-helper" \
   "$stage/usr/bin/cyd32-update"
+# N3: ship the helper as 0750. dpkg-deb --root-owner-group records root/root;
+# postinst still does chown root:cyd32, chmod 0750, then setcap.
+chmod 0750 "$stage/usr/share/APPLaunch/bin/cyd32-awus-helper"
 cp "$root/cardputerzero/packaging/debian/cyd32.desktop" "$stage/usr/share/APPLaunch/applications/cyd32.desktop"
 cp "$root/cardputerzero/packaging/cyd32.png" "$stage/usr/share/APPLaunch/share/images/cyd32.png"
 cp "$root/cardputerzero/packaging/debian/copyright" "$stage/usr/share/doc/cyd32/copyright"

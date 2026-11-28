@@ -68,6 +68,8 @@ enable_testing()
 add_test(NAME radio COMMAND cyd32-radio-test)
 add_test(NAME radio-helper COMMAND cyd32-radio-test --helper $<TARGET_FILE:cyd32-awus-helper>)
 add_test(NAME helper-sys-refused COMMAND cyd32-radio-test --sys-refused $<TARGET_FILE:cyd32-awus-helper>)
+add_test(NAME helper-restore-type COMMAND cyd32-radio-test --restore-type $<TARGET_FILE:cyd32-awus-helper>)
+add_test(NAME helper-hop-freq COMMAND cyd32-radio-test --hop-freq $<TARGET_FILE:cyd32-awus-helper>)
 
 if(CYD32_BUILD_UI)
   if(CYD32_DISPLAY STREQUAL "fbdev")
