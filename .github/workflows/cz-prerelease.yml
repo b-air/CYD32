@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2026 CYD32 contributors
+# Creates a CardputerZero test tag (vX.Y.Z-cz-testN) on main and an empty
+# pre-release for it. The .deb and SHA256SUMS are built on the device and
+# uploaded by the maintainer. Manual dispatch from main by b-air only, then
+# approval in the `prerelease` environment. The tag is created by this job
+# (GitHub Actions is the only bypass actor of the cz-test tag creation ruleset).
+name: cz-prerelease
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create, e.g. v0.3.0-cz-test2"
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: cz-prerelease
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    if: github.ref == 'refs/heads/main' && github.triggering_actor == 'b-air' && github.actor == 'b-air'
+    runs-on: ubuntu-24.04
+    environment: prerelease
+    permissions:
+      contents: write        # create the tag and the pre-release
+    timeout-minutes: 5
+    steps:
+      - name: Check inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          printf '%s' "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+-cz-test[0-9]+' \
+            || { echo "::error::tag must match vX.Y.Z-cz-testN"; exit 1; }
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::tag $TAG already exists"; exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG already exists"; exit 1
+          fi
+          echo "Tag $TAG on main at $GITHUB_SHA"
+      - name: Create tag on main
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
+      - name: Create empty pre-release
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+            --verify-tag --prerelease --latest=false \
+            --notes "CardputerZero test build of main at $GITHUB_SHA. Unsigned. The maintainer uploads cyd32_*_arm64.deb and SHA256SUMS built on the device."
