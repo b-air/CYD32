@@ -40,19 +40,30 @@ host shims. `hw.cpp`, `scanner.cpp`, the OTA files and `ui.cpp` are not linked.
 
 ## Keyboard
 
-| Key | Action |
-| --- | --- |
-| Left / Up | previous contact, menu row or creature button |
-| Right / Down | next |
-| Enter / Space | open the row, PET or FEED |
-| 1 2 3 4 / Tab | SONAR, DASH, CREA, MENU |
-| Esc | back |
-| H | SONAR |
-| [ ] or M | previous / next mode |
-| B | toggle the proximity beep |
-| A | ABOUT (from DASH, A is also the last row) |
-| Q | leave the app and return to the carousel |
-| Esc on SONAR | same exit. Esc on any other screen goes back |
+| Key | Linux code | Action |
+| --- | --- | --- |
+| Fn+F, or F | `KEY_UP` 103, `KEY_F` 33 | previous contact, menu row or creature button |
+| Fn+X, or X | `KEY_DOWN` 108, `KEY_X` 45 | next |
+| Fn+Z, or Z | `KEY_LEFT` 105, `KEY_Z` 44 | previous |
+| Fn+C, or C | `KEY_RIGHT` 106, `KEY_C` 46 | next |
+| Fn+E, or E | `KEY_NEXTSONG` 163, `KEY_E` 18 | next. The v5 keymap's up arrow is F, not E |
+| Enter / Space / 8 | confirm | open the row, PET or FEED |
+| 1 2 3 4 / Tab | SONAR, DASH, CREA, MENU | |
+| 5 6 7 | DASH, CREA, MENU again | the keys centered under the panel |
+| Esc | back | |
+| H | SONAR | |
+| [ ] or M | previous / next mode | |
+| B | toggle the proximity beep | |
+| A | ABOUT (from DASH, A is also the last row) | |
+| Q | leave the app and return to the carousel | |
+| Esc on SONAR | same exit. Esc on any other screen goes back | |
+
+The Fn layer comes from `linux,keymap2` in the v5 overlay
+(`cardputerzero-v5-overlay.dts`). Moving a contact does not rebuild the
+sonar, so the sweep keeps going. `v0.3.1` (the part of the build version
+before the first hyphen) is drawn in amber at the right of the tab row.
+The status line on the top stays as it is. The full `git describe` string
+stays on ABOUT. The Fn key itself (`KEY_DVD` 389) is ignored.
 
 Modes are ALL, WIFI, BLE, RID, FLOCK, TRK, META. DASH views are WIFI, BLE,
 RID, TAGGED, LOG. Wardrive is a RAM log. microSD is the system disk and is
@@ -150,7 +161,7 @@ One package. It registers CYD32 with APPLaunch. Do not stop LightDM and do
 not stop the launcher to install or to open the app.
 
 ```sh
-sudo apt install ./cyd32_0.3.1_arm64.deb
+sudo apt install ./cyd32_0.3.1-2_arm64.deb
 ```
 
 `postinst` creates the system user `cyd32`, installs the helper as

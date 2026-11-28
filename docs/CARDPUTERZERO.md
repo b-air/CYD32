@@ -8,14 +8,15 @@ The ESP32 install, signing and release steps are unchanged. Follow
 
 ## Install
 
-Install from a pre-release that contains `cyd32_0.3.1_arm64.deb` and
+Install from a pre-release that contains `cyd32_0.3.1-2_arm64.deb` and
 `SHA256SUMS`. Replace `TAG` with that pre-release name. Run one command at
-a time. `SHA256SUMS` lists only this `.deb`.
+a time. `SHA256SUMS` lists only this `.deb`. `0.3.1-2` replaces an
+installed `0.3.1`.
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fL -O https://github.com/b-air/CYD32/releases/download/TAG/cyd32_0.3.1_arm64.deb -O https://github.com/b-air/CYD32/releases/download/TAG/SHA256SUMS
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fL -O https://github.com/b-air/CYD32/releases/download/TAG/cyd32_0.3.1-2_arm64.deb -O https://github.com/b-air/CYD32/releases/download/TAG/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apt install ./cyd32_0.3.1_arm64.deb
+sudo apt install ./cyd32_0.3.1-2_arm64.deb
 ```
 
 The icon appears in the carousel. `Q`, or Esc on the SONAR screen, returns

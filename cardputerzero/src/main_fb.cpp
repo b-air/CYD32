@@ -4,6 +4,7 @@
 // thread, and waits. This process does not grab the keypad: the launcher keeps
 // reading the same device so a long Esc can deliver SIGTERM.
 #include "app.hpp"
+#include "keys.hpp"
 #include "lvgl.h"
 #include <ctype.h>
 #include <fcntl.h>
@@ -23,26 +24,11 @@ int kfd = -1;
 volatile sig_atomic_t g_stop = 0;
 void on_term(int) { g_stop = 1; }
 
-int map_key(int code) {
-  switch (code) {
-    case KEY_UP: case KEY_LEFT: return CZ_PREV;
-    case KEY_DOWN: case KEY_RIGHT: return CZ_NEXT;
-    case KEY_ENTER: case KEY_SPACE: return CZ_SELECT;
-    case KEY_ESC: return CZ_BACK;
-    case KEY_TAB: return CZ_TAB_NEXT;
-    case KEY_1: return CZ_TAB1;
-    case KEY_2: return CZ_TAB2;
-    case KEY_3: return CZ_TAB3;
-    case KEY_4: return CZ_TAB4;
-    case KEY_H: return CZ_HOME;
-    case KEY_M: case KEY_RIGHTBRACE: return CZ_MODE_NEXT;
-    case KEY_LEFTBRACE: return CZ_MODE_PREV;
-    case KEY_B: return CZ_BEEP;
-    case KEY_A: return CZ_ABOUT;
-    case KEY_Q: return CZ_QUIT;
-    default: return CZ_NONE;
-  }
-}
+static_assert(KEY_UP == 103 && KEY_DOWN == 108 && KEY_LEFT == 105 && KEY_RIGHT == 106, "arrow layer");
+static_assert(KEY_F == 33 && KEY_Z == 44 && KEY_X == 45 && KEY_C == 46 && KEY_E == 18, "letter layer");
+static_assert(KEY_NEXTSONG == 163 && KEY_DVD == 389, "Fn+E and the Fn key");
+static_assert(KEY_1 == 2 && KEY_4 == 5 && KEY_5 == 6 && KEY_8 == 9 && KEY_Q == 16 && KEY_ESC == 1, "row under the panel");
+int map_key(int code) { return cz_map_evdev(code); }
 bool readable(const char *p) { return p && *p && access(p, R_OK) == 0; }
 
 std::string keyboard_named_tca8418() {
@@ -115,16 +101,19 @@ void blank_fb(const char *path) {
 int main(int argc, char **argv) {
   CzOpts opt;
   const char *fb = nullptr;
+  bool map_test = false;
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
-    if (!strcmp(a, "--self-test")) { opt.self_test = true; opt.sim = true; if (!opt.frames) opt.frames = 40; }
+    if (!strcmp(a, "--map-test")) map_test = true;
+    else if (!strcmp(a, "--self-test")) { opt.self_test = true; opt.sim = true; if (!opt.frames) opt.frames = 40; }
     else if (!strcmp(a, "--awus")) opt.sim = false;
     else if (!strcmp(a, "--frames") && i + 1 < argc) opt.frames = atoi(argv[++i]);
     else if (!strcmp(a, "--sys") && i + 1 < argc) opt.sysfs = argv[++i];
     else if (!strcmp(a, "--helper") && i + 1 < argc) opt.helper = argv[++i];
     else if (!strcmp(a, "--fb") && i + 1 < argc) fb = argv[++i];
-    else { fprintf(stderr, "cyd32-ui [--awus] [--self-test] [--frames N] [--fb PATH]\n"); return 2; }
+    else { fprintf(stderr, "cyd32-ui [--awus] [--self-test] [--map-test] [--frames N] [--fb PATH]\n"); return 2; }
   }
+  if (map_test) return cz_evdev_map_check();
   if (!fb) {
     const char *env = getenv("APPLAUNCH_LINUX_FBDEV_DEVICE");
     fb = (env && *env) ? env : "/dev/fb0";

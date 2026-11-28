@@ -124,6 +124,7 @@ if(CYD32_BUILD_UI)
   endif()
   add_executable(cyd32-ui
     ${CYD32_UI_MAIN}
+    src/keys.cpp
     src/app.cpp
     src/live.cpp
     src/creature_view.cpp
